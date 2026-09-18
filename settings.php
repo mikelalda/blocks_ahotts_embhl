@@ -152,16 +152,23 @@ if ($ADMIN->fulltree) {
         get_string('piperenabled_help', 'block_ahotts_embhl'), 1)
     );
 
-    $settings->add(new admin_setting_configselect(
-        'block_ahotts_embhl/pipervoice',
-        get_string('pipervoice', 'block_ahotts_embhl'),
-        get_string('pipervoice_help', 'block_ahotts_embhl'),
-        'antton',
-        array(
-            'antton' => get_string('pipervoice_antton', 'block_ahotts_embhl'),
-            'maider' => get_string('pipervoice_maider', 'block_ahotts_embhl')
-        )
-    ));
+    // One default voice per language, and one model URL per voice, so a site can
+    // host the models itself instead of reaching out to Hugging Face.
+    foreach (\block_ahotts_embhl\local\languages::PIPER_VOICES as $piperlang => $pipervoices) {
+        $choices = array();
+        foreach (array_keys($pipervoices) as $voiceid) {
+            $choices[$voiceid] = get_string('pipervoice_' . $voiceid, 'block_ahotts_embhl');
+        }
+
+        $settings->add(new admin_setting_configselect(
+            'block_ahotts_embhl/pipervoice_' . $piperlang,
+            get_string('pipervoice_lang', 'block_ahotts_embhl',
+                get_string('pipervoicelang_' . $piperlang, 'block_ahotts_embhl')),
+            get_string('pipervoice_help', 'block_ahotts_embhl'),
+            \block_ahotts_embhl\local\languages::DEFAULT_PIPER_VOICES[$piperlang],
+            $choices
+        ));
+    }
 
     $settings->add(new admin_setting_configcheckbox(
         'block_ahotts_embhl/pipervoicechooser',
@@ -181,21 +188,18 @@ if ($ADMIN->fulltree) {
         )
     ));
 
-    $settings->add(new admin_setting_configtext(
-        'block_ahotts_embhl/pipermodel_antton',
-        get_string('pipermodel_antton', 'block_ahotts_embhl'),
-        get_string('pipermodel_help', 'block_ahotts_embhl'),
-        \block_ahotts_embhl\local\languages::PIPER_VOICES['antton'],
-        PARAM_URL
-    ));
-
-    $settings->add(new admin_setting_configtext(
-        'block_ahotts_embhl/pipermodel_maider',
-        get_string('pipermodel_maider', 'block_ahotts_embhl'),
-        get_string('pipermodel_help', 'block_ahotts_embhl'),
-        \block_ahotts_embhl\local\languages::PIPER_VOICES['maider'],
-        PARAM_URL
-    ));
+    foreach (\block_ahotts_embhl\local\languages::PIPER_VOICES as $pipervoices) {
+        foreach ($pipervoices as $voiceid => $modelurl) {
+            $settings->add(new admin_setting_configtext(
+                'block_ahotts_embhl/pipermodel_' . $voiceid,
+                get_string('pipermodel', 'block_ahotts_embhl',
+                    get_string('pipervoice_' . $voiceid, 'block_ahotts_embhl')),
+                get_string('pipermodel_help', 'block_ahotts_embhl'),
+                $modelurl,
+                PARAM_URL
+            ));
+        }
+    }
 
     $settings->add(new admin_setting_configtext(
         'block_ahotts_embhl/piperort',
@@ -217,7 +221,15 @@ if ($ADMIN->fulltree) {
         'block_ahotts_embhl/piperphonemizer',
         get_string('piperphonemizer', 'block_ahotts_embhl'),
         get_string('piperphonemizer_help', 'block_ahotts_embhl'),
-        'https://cdn.jsdelivr.net/npm/phonemizer@1.2.1/dist/phonemizer.js',
+        \block_ahotts_embhl\local\languages::DEFAULT_PHONEMIZER,
+        PARAM_URL
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'block_ahotts_embhl/piperphonemizerwasm',
+        get_string('piperphonemizerwasm', 'block_ahotts_embhl'),
+        get_string('piperphonemizerwasm_help', 'block_ahotts_embhl'),
+        \block_ahotts_embhl\local\languages::DEFAULT_PHONEMIZER_WASM,
         PARAM_URL
     ));
 

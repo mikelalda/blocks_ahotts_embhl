@@ -21,11 +21,11 @@
  * while the current one plays, which is what makes playback feel immediate.
  *
  * Each language is spoken by the first engine that works for it:
- *   - Basque: the itzune Piper voices running locally in the browser (see
- *     ./piper), falling back to the aHoTTS API when the browser or the network
- *     cannot manage them;
- *   - every other language: the browser's own Web Speech API, falling back to
- *     the aHoTTS API when one is configured for it.
+ *   - a Piper voice running locally in the browser (see ./piper), where one is
+ *     published for that language;
+ *   - the browser's own Web Speech API behind it, except for Basque, which no
+ *     browser can speak;
+ *   - the aHoTTS API last, when one is configured for that language.
  *
  * Which language is read is decided by the configured language mode: a fixed
  * language, the language of the Moodle interface, the lang attribute of the
@@ -898,7 +898,7 @@ const adaptLegacyConfig = (config) => {
  * @param {String} config.langmode  'fixed', 'page', 'content' or 'chooser'.
  * @param {String} config.lang      Base code of the language resolved server side.
  * @param {Array}  config.languages [{code, label, bcp47, engines: [{kind, ...}]}], in preference order.
- * @param {Object} [config.piper]   itzune Piper settings {voice, chooser, voices, backend, orturl, ...}.
+ * @param {Object} [config.piper]   Piper settings {defaults, chooser, voices, backend, orturl, ...}.
  * @param {Object} [config.bridge]  Cross-origin bridge {enabled, origins, timeout}.
  * @param {Object} [config.status]  Status messages keyed by name.
  * @param {String} [config.prefer]  Legacy single-language shape: 'api' or 'webspeech'.
@@ -929,19 +929,43 @@ export const init = (config) => {
     if (!language) {
         return;
     }
-    let voiceid = readStored(STORAGE_VOICE) || piperConfig.voice || '';
-
     const piperVoices = piperConfig.voices || [];
-    const piperVoice = () => piperVoices.find((voice) => voice.id === voiceid) || piperVoices[0] || null;
+    const piperDefaults = piperConfig.defaults || {};
+    // What the reader picked, per language, for as long as the page lives.
+    const chosenVoices = {};
+
+    const voicesFor = (code) => piperVoices.filter((voice) => voice.language === code);
+
+    /**
+     * The voice a language is read with: the reader's own choice, then the
+     * administrator's default, then whatever is published for it.
+     *
+     * @param {String} code
+     * @return {String}
+     */
+    const voiceIdFor = (code) => {
+        if (!chosenVoices[code]) {
+            const offered = voicesFor(code);
+            const known = (id) => !!id && offered.some((voice) => voice.id === id);
+            const stored = readStored(STORAGE_VOICE + ':' + code);
+            chosenVoices[code] = (known(stored) && stored)
+                || (known(piperDefaults[code]) && piperDefaults[code])
+                || (offered.length ? offered[0].id : '');
+        }
+        return chosenVoices[code];
+    };
+
+    const piperVoiceFor = (code) => voicesFor(code).find((voice) => voice.id === voiceIdFor(code)) || null;
     const usesPiper = (entry) => (entry.engines || []).some((spec) => spec.kind === 'piper');
 
     /**
      * Whether an engine could be built at all, without building it.
      *
      * @param {Object} spec
+     * @param {Object} entry The language it would speak.
      * @return {Boolean}
      */
-    const couldRun = (spec) => {
+    const couldRun = (spec, entry) => {
         if (spec.kind === 'webspeech') {
             return hasWebSpeech();
         }
@@ -949,7 +973,7 @@ export const init = (config) => {
             return !!spec.url;
         }
         if (spec.kind === 'piper') {
-            const voice = piperVoice();
+            const voice = piperVoiceFor(entry.code);
             return !!(voice && voice.modelurl && piperConfig.orturl
                 && piperConfig.phonemizerurl && piperConfig.loaderurl);
         }
@@ -957,7 +981,7 @@ export const init = (config) => {
     };
 
     // Nothing can speak anything: leave the button alone rather than pretend.
-    if (!config.languages.some((entry) => (entry.engines || []).some(couldRun))) {
+    if (!config.languages.some((entry) => (entry.engines || []).some((spec) => couldRun(spec, entry)))) {
         return;
     }
 
@@ -976,11 +1000,12 @@ export const init = (config) => {
             return engineFactories.api(spec);
         }
         if (spec.kind === 'piper') {
-            const voice = piperVoice();
+            const voice = piperVoiceFor(entry.code);
             return engineFactories.piper({
                 modelurl: voice.modelurl,
                 configurl: voice.configurl || '',
-                language: voice.language || entry.code,
+                // No language is forced: each model names the eSpeak voice it
+                // was trained with, down to the region, and that one is right.
                 backend: piperConfig.backend || 'auto',
                 orturl: piperConfig.orturl,
                 wasmpath: piperConfig.wasmpath || '',
@@ -995,7 +1020,7 @@ export const init = (config) => {
     // are built once and kept, one per language, kind and voice.
     const engines = new Map();
     const engineFor = (spec, entry) => {
-        const key = entry.code + '|' + spec.kind + '|' + (spec.kind === 'piper' ? voiceid : '');
+        const key = entry.code + '|' + spec.kind + '|' + (spec.kind === 'piper' ? voiceIdFor(entry.code) : '');
         if (!engines.has(key)) {
             engines.set(key, buildEngine(spec, entry));
         }
@@ -1066,7 +1091,7 @@ export const init = (config) => {
     let engineNotice = '';
     const resolveEngine = async (entry) => {
         engineNotice = '';
-        const specs = (entry.engines || []).filter(couldRun);
+        const specs = (entry.engines || []).filter((spec) => couldRun(spec, entry));
         for (let i = 0; i < specs.length; i++) {
             const engine = engineFor(specs[i], entry);
             if (!engine) {
@@ -1103,6 +1128,26 @@ export const init = (config) => {
     button.parentNode.insertBefore(controls, status);
 
     /**
+     * Put a set of options into a select, keeping one of them chosen.
+     *
+     * @param {Element} select
+     * @param {Array} options [{value, label}]
+     * @param {String} selected
+     */
+    const fillSelect = (select, options, selected) => {
+        select.textContent = '';
+        options.forEach((option) => {
+            const node = document.createElement('option');
+            node.value = option.value;
+            node.textContent = option.label;
+            if (option.value === selected) {
+                node.selected = true;
+            }
+            select.appendChild(node);
+        });
+    };
+
+    /**
      * Add a labelled select to the controls.
      *
      * @param {String} classname
@@ -1122,15 +1167,7 @@ export const init = (config) => {
         const select = document.createElement('select');
         select.id = id;
         select.className = classname + ' custom-select custom-select-sm mr-2';
-        options.forEach((option) => {
-            const node = document.createElement('option');
-            node.value = option.value;
-            node.textContent = option.label;
-            if (option.value === selected) {
-                node.selected = true;
-            }
-            select.appendChild(node);
-        });
+        fillSelect(select, options, selected);
         select.addEventListener('change', () => onchange(select.value));
 
         controls.appendChild(label);
@@ -1143,9 +1180,19 @@ export const init = (config) => {
         if (!voiceControl) {
             return;
         }
-        const show = usesPiper(language) && couldRun({kind: 'piper'});
+        // Each language has its own voices, so the menu is rebuilt whenever the
+        // reading language changes, and hidden when there is nothing to choose.
+        const offered = voicesFor(language.code);
+        const show = offered.length > 1 && usesPiper(language) && couldRun({kind: 'piper'}, language);
         voiceControl.label.hidden = !show;
         voiceControl.select.hidden = !show;
+        if (show) {
+            fillSelect(
+                voiceControl.select,
+                offered.map((voice) => ({value: voice.id, label: voice.label || voice.id})),
+                voiceIdFor(language.code)
+            );
+        }
     };
 
     if (config.langmode === 'chooser' && config.languages.length > 1) {
@@ -1167,12 +1214,12 @@ export const init = (config) => {
         voiceControl = addSelect(
             'ahotts-voice',
             config.labels.voice || '',
-            piperVoices.map((voice) => ({value: voice.id, label: voice.label || voice.id})),
-            piperVoice() ? piperVoice().id : '',
+            voicesFor(language.code).map((voice) => ({value: voice.id, label: voice.label || voice.id})),
+            voiceIdFor(language.code),
             (value) => {
                 stopPlayback();
-                voiceid = value;
-                writeStored(STORAGE_VOICE, voiceid);
+                chosenVoices[language.code] = value;
+                writeStored(STORAGE_VOICE + ':' + language.code, value);
             }
         );
         syncVoiceControl();

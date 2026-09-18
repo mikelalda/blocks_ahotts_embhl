@@ -27,4 +27,4 @@
 $string['listentext'] = "朗读";
 
 // Listen button descriptive title text
-$string['listen_titletext'] = "使用 ReadSpeaker 語音瀏覽此頁面 ";
+$string['listen_titletext'] = "使用 BirtSpeaker 語音瀏覽此頁面 ";

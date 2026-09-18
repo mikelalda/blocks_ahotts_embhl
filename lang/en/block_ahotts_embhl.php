@@ -24,19 +24,19 @@
  */
 
 // General Strings.
-$string['pluginname'] = 'ReadSpeaker webReader';
-$string['readspeaker_embhl'] = 'ReadSpeaker webReader';
-$string['ahotts_embhl:addinstance'] = 'Add a new webReader block';
-$string['ahotts_embhl:myaddinstance'] = 'Add a new webReader block to the My Moodle page';
-$string['ahotts_embhl:edit'] = 'Edit setting for the webReader block';
+$string['pluginname'] = 'BirtSpeaker';
+$string['readspeaker_embhl'] = 'BirtSpeaker';
+$string['ahotts_embhl:addinstance'] = 'Add a new BirtSpeaker block';
+$string['ahotts_embhl:myaddinstance'] = 'Add a new BirtSpeaker block to the My Moodle page';
+$string['ahotts_embhl:edit'] = 'Edit setting for the BirtSpeaker block';
 
 // Admin Configuration Strings.
 $string['header_config'] = 'Configuration Options';
-$string['header_config_help'] = 'Below you will find the configuration options available for the ReadSpeaker webReader plugin.';
+$string['header_config_help'] = 'Below you will find the configuration options available for the BirtSpeaker plugin.';
 
 // Block title.
-$string['block_title'] = 'Listen to this page using ReadSpeaker';
-$string['block_settings_title'] = 'Configure ReadSpeaker webReader';
+$string['block_title'] = 'Listen to this page with BirtSpeaker';
+$string['block_settings_title'] = 'Configure BirtSpeaker';
 
 // CustomerID.
 $string['customerid'] = 'Customer ID (required)';
@@ -194,10 +194,10 @@ $string['maxtextlength'] = 'Maximum text length';
 $string['maxtextlength_help'] = 'Maximum number of characters sent to the synthesis engine in a single request.';
 
 // Listen button descriptive title text.
-$string['listen_titletext'] = "Listen to this page using ReadSpeaker";
+$string['listen_titletext'] = "Listen to this page using BirtSpeaker";
 
 // Privacy text.
-$string['privacy:metadata'] = 'The ReadSpeaker block does not store any personal information and only displays the ReadSpeaker Listen button.';
+$string['privacy:metadata'] = 'The BirtSpeaker block does not store any personal information and only displays the Listen button.';
 
 // Enable statistics.
 $string['statistics'] = 'Statistics: Enable page information';
@@ -243,30 +243,38 @@ $string['languagelabel'] = 'Language';
 $string['voicelabel'] = 'Voice';
 
 // In-browser Basque voices (itzune Piper models).
-$string['header_piper'] = 'Basque voices in the browser (itzune)';
-$string['header_piper_help'] = 'The itzune voices (<a href="https://huggingface.co/itzune">huggingface.co/itzune</a>) are Piper models in ONNX format, run locally by ONNX Runtime Web on WebGPU, or on WebAssembly when WebGPU is not available. Nothing is sent to a server, but the voice (around 65 MB) and the runtime are downloaded once and then kept in the browser cache. If they cannot be loaded, the block falls back to the aHoTTS API.';
-$string['piperenabled'] = 'Use the itzune voices in the browser for Basque';
-$string['piperenabled_help'] = 'When this is off, or when the runtime cannot start, Basque is synthesised by the aHoTTS API instead.';
-$string['pipervoice'] = 'Default Basque voice';
+$string['header_piper'] = 'Neural voices in the browser (Piper)';
+$string['header_piper_help'] = 'Piper voices are ONNX models run locally by ONNX Runtime Web, on WebGPU or on WebAssembly when WebGPU is not available. Basque is read by the itzune voices (<a href="https://huggingface.co/itzune">huggingface.co/itzune</a>), the other languages by voices from the Piper project. Nothing is sent to a server, but each voice (around 65 MB) and the runtime are downloaded once and then kept in the browser cache. If they cannot be loaded, the block falls back to the browser\'s own voice, or to the aHoTTS API.';
+$string['piperenabled'] = 'Use neural voices in the browser';
+$string['piperenabled_help'] = 'Reads the page with a voice running on the learner\'s own machine, so no text is sent anywhere. When this is off, or when the runtime cannot start, the browser\'s own voice or the aHoTTS API is used instead. Basque has no browser voice, so with this off it needs the API.';
+$string['pipervoice_lang'] = 'Default voice for {$a}';
 $string['pipervoice_help'] = 'Voice used unless the reader picks another one.';
-$string['pipervoice_antton'] = 'Antton (male)';
-$string['pipervoice_maider'] = 'Maider (female)';
-$string['pipervoicechooser'] = 'Let the reader choose the Basque voice';
-$string['pipervoicechooser_help'] = 'Adds a voice menu to the block while Basque is being read.';
+$string['pipervoice_antton'] = 'Antton (Basque, male)';
+$string['pipervoice_maider'] = 'Maider (Basque, female)';
+$string['pipervoice_davefx'] = 'Davefx (Spanish from Spain, male)';
+$string['pipervoice_claude'] = 'Claude (Mexican Spanish, female)';
+$string['pipervoice_alba'] = 'Alba (British English, female)';
+$string['pipervoice_ryan'] = 'Ryan (American English, male)';
+$string['pipervoicelang_eu'] = 'Basque';
+$string['pipervoicelang_es'] = 'Spanish';
+$string['pipervoicelang_en'] = 'English';
+$string['pipervoicechooser'] = 'Let the reader choose the voice';
+$string['pipervoicechooser_help'] = 'Adds a voice menu to the block, listing the voices available for the language being read.';
 $string['piperbackend'] = 'Execution backend';
 $string['piperbackend_help'] = 'WebGPU is faster where it is available. "Automatic" uses it when the browser offers it and falls back to WebAssembly otherwise.';
 $string['piperbackend_auto'] = 'Automatic (WebGPU, then WebAssembly)';
 $string['piperbackend_webgpu'] = 'WebGPU';
 $string['piperbackend_wasm'] = 'WebAssembly';
-$string['pipermodel_antton'] = 'Antton model URL';
-$string['pipermodel_maider'] = 'Maider model URL';
+$string['pipermodel'] = 'Model URL for {$a}';
 $string['pipermodel_help'] = 'URL of the .onnx voice. Its configuration is read from the same URL with .json appended. Serve it from your own site to avoid depending on a third party, and make sure the response allows cross-origin reads if it is not on this domain.';
 $string['piperort'] = 'ONNX Runtime Web URL';
 $string['piperort_help'] = 'URL of the ONNX Runtime Web build (the UMD one, for example ort.webgpu.min.js).';
 $string['piperwasmpath'] = 'ONNX Runtime WebAssembly directory';
 $string['piperwasmpath_help'] = 'Directory holding the runtime\'s .wasm files, with a trailing slash.';
 $string['piperphonemizer'] = 'Phonemizer URL';
-$string['piperphonemizer_help'] = 'URL of the eSpeak NG phonemizer ES module, which turns text into the phonemes the voice expects.';
+$string['piperphonemizer_help'] = 'URL of the eSpeak NG phonemizer ES module, which turns text into the phonemes the voice expects. It must be a build that carries Basque: builds carrying only English leave the itzune voices silent.';
+$string['piperphonemizerwasm'] = 'Phonemizer WebAssembly file';
+$string['piperphonemizerwasm_help'] = 'URL of the phonemizer\'s .wasm file. It is downloaded once and reused for every sentence, which is much faster than letting the module fetch it each time. Leave empty to let the module find it by itself.';
 
 // Playback status.
 $string['status_preparingvoice'] = 'Preparing the voice. The first time, this downloads it.';

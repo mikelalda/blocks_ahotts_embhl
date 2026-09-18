@@ -109,9 +109,12 @@ const makeEngine = (options = {}) => {
         loadScript: options.scriptFails
             ? () => Promise.reject(new Error('offline'))
             : () => Promise.resolve(),
-        loadModule: () => Promise.resolve({
+        loadModule: () => Promise.resolve(options.namespace || {
             phonemize: (text, language) => {
                 phonemized.push({text, language});
+                if (options.phonemizerFailsOn === language) {
+                    return Promise.reject(new Error('eSpeak NG cannot speak "' + language + '"'));
+                }
                 return Promise.resolve([options.phonemes === undefined ? 'abiˈaɾ' : options.phonemes]);
             },
         }),
@@ -218,7 +221,10 @@ test('feeds the model the phoneme ids, the length and the inference scales', asy
     const url = await ctx.engine.prepare('Kaixo');
     assert.equal(url, 'blob:fake');
 
-    assert.deepEqual(ctx.phonemized, [{text: 'Kaixo', language: 'eu'}]);
+    assert.deepEqual(ctx.phonemized, [
+        {text: 'kaixo', language: 'eu'},
+        {text: 'Kaixo', language: 'eu'},
+    ], 'one word is phonemized while the engine starts, then the chunk');
 
     const feeds = ctx.calls.feeds;
     assert.equal(feeds.input.type, 'int64');
@@ -277,4 +283,103 @@ test('waits for the engine before speaking', async () => {
     assert.equal(typeof ctx.engine.prepare, 'function');
     assert.equal(typeof ctx.engine.play, 'function');
     assert.equal(typeof ctx.engine.stop, 'function');
+});
+
+test('refuses to start when the phonemizer cannot speak the voice\'s language', async () => {
+    // An eSpeak build carrying only English used to start cleanly here and then
+    // fail on every chunk, so the learner heard nothing and was told nothing.
+    const ctx = makeEngine({phonemizerFailsOn: 'eu'});
+
+    assert.equal(await ctx.engine.warmup(), false);
+    assert.equal(ctx.calls.sessions.length, 0, 'and the voice is not downloaded for nothing');
+});
+
+test('refuses to start when the phonemizer module is of no known shape', async () => {
+    const ctx = makeEngine({namespace: {something: 'else'}});
+
+    assert.equal(await ctx.engine.warmup(), false);
+});
+
+test('uses a module exporting phonemize() as it is', () => {
+    const speech = loadSpeech('<!doctype html><html><body></body></html>');
+    const phonemize = () => {};
+
+    assert.equal(speech.piper.resolvePhonemizer({phonemize}, () => {}, ''), phonemize);
+});
+
+test('drives a full eSpeak NG build as a command line program', async () => {
+    const speech = loadSpeech('<!doctype html><html><body></body></html>');
+    const runs = [];
+    const factory = (options) => {
+        runs.push(options);
+        return Promise.resolve({
+            FS: {readFile: () => 'kˈaɪʃo\nˈaʊ eʊs̺kˈaɾa'},
+        });
+    };
+
+    const phonemize = speech.piper.resolvePhonemizer({default: factory}, () => {}, '');
+    const phonemes = await phonemize('Kaixo, hau euskara', 'eu');
+
+    assert.deepEqual([...phonemes], ['kˈaɪʃo', 'ˈaʊ eʊs̺kˈaɾa'], 'one entry per clause');
+    assert.deepEqual([...runs[0].arguments], [
+        '--phonout', 'phonemes',
+        '--sep=',
+        '-q',
+        '--ipa',
+        '-v', 'eu',
+        'Kaixo, hau euskara',
+    ], 'plain IPA with no separators is what Piper voices are trained on');
+    assert.ok(
+        !runs[0].arguments.some((argument) => String(argument).startsWith('-b')),
+        'no input encoding is forced: any -b makes eSpeak spell out accented characters'
+    );
+});
+
+test('downloads the eSpeak WebAssembly once and reuses it for every sentence', async () => {
+    const speech = loadSpeech('<!doctype html><html><body></body></html>');
+    const binary = new ArrayBuffer(8);
+    const fetched = [];
+    const runs = [];
+    const factory = (options) => {
+        runs.push(options);
+        return Promise.resolve({FS: {readFile: () => 'a'}});
+    };
+    const fetchBinary = (url) => {
+        fetched.push(url);
+        return Promise.resolve(binary);
+    };
+
+    const phonemize = speech.piper.resolvePhonemizer(
+        {default: factory},
+        fetchBinary,
+        'https://moodle.example.org/espeak-ng.wasm'
+    );
+    await phonemize('Bat', 'eu');
+    await phonemize('Bi', 'eu');
+
+    assert.deepEqual(fetched, ['https://moodle.example.org/espeak-ng.wasm']);
+    assert.equal(runs.length, 2);
+    assert.equal(runs[0].wasmBinary, binary);
+    assert.equal(runs[1].wasmBinary, binary);
+});
+
+test('reports what eSpeak complained about when a language is missing', async () => {
+    const speech = loadSpeech('<!doctype html><html><body></body></html>');
+    const factory = (options) => {
+        options.printErr('Invalid language identifier: "eu"');
+        return Promise.resolve({
+            FS: {
+                readFile: () => {
+                    throw new Error('ENOENT');
+                },
+            },
+        });
+    };
+
+    const phonemize = speech.piper.espeakPhonemizer(factory, () => {}, '');
+
+    await assert.rejects(
+        () => phonemize('Kaixo', 'eu'),
+        /eSpeak NG cannot speak "eu".*Invalid language identifier/
+    );
 });

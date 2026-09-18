@@ -27,4 +27,4 @@
 $string['listentext'] = "Vorlesen";
 
 // Listen button descriptive title text
-$string['listen_titletext'] = "Um den Text anzuhören, verwenden Sie bitte ReadSpeaker";
+$string['listen_titletext'] = "Um den Text anzuhören, verwenden Sie bitte BirtSpeaker";

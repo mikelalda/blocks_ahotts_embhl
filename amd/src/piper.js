@@ -14,18 +14,23 @@
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
 /**
- * In-browser Basque speech synthesis with the itzune Piper voices.
+ * In-browser speech synthesis with Piper voices.
  *
- * The voices published at https://huggingface.co/itzune (antton and maider) are
- * Piper/VITS models exported to ONNX. They are run locally by ONNX Runtime Web,
- * on WebGPU when the browser offers it and on WebAssembly otherwise, so no text
- * leaves the learner's machine and no request is made to the aHoTTS service.
+ * Basque is spoken by the itzune voices (https://huggingface.co/itzune), the
+ * other languages by voices from the Piper project. All of them are Piper/VITS
+ * models exported to ONNX, run locally by ONNX Runtime Web, on WebGPU when the
+ * browser offers it and on WebAssembly otherwise, so no text leaves the
+ * learner's machine and no request is made to the aHoTTS service.
  *
  * The pipeline is the standard Piper one:
  *
  *   text --(eSpeak NG, in WebAssembly)--> IPA phonemes
  *        --(phoneme_id_map from the voice config)--> int64 ids
  *        --(VITS ONNX model)--> float32 waveform --> WAV blob
+ *
+ * The phonemizer must be an eSpeak NG build carrying the languages in use.
+ * Builds exist that only carry English, so the engine phonemizes one word while
+ * it starts and refuses to report itself ready when the language is missing.
  *
  * Both the runtime and the voice are fetched once and kept in the Cache Storage,
  * so later pages start speaking without downloading anything again.
@@ -42,6 +47,14 @@ const SYMBOL_PAD = '_';
 
 // Where downloaded runtimes and voices are kept between visits.
 const CACHE_NAME = 'block_ahotts_embhl_piper_v1';
+
+// Name eSpeak NG is asked to write its phonemes to, inside its own in-memory
+// file system.
+const ESPEAK_OUTPUT = 'phonemes';
+
+// A word run through the phonemizer while the engine starts, to prove the build
+// in use really carries the voice's language.
+const LANGUAGE_PROBE = 'kaixo';
 
 /**
  * Turn a string of IPA phonemes into the id sequence a Piper model expects.
@@ -239,6 +252,98 @@ const fetchCached = async (url) => {
 export const hasWebGpu = () => typeof navigator !== 'undefined' && !!navigator.gpu;
 
 /**
+ * Adapt a full eSpeak NG WebAssembly build to phonemize(text, language).
+ *
+ * eSpeak NG is published as an Emscripten command line program: it runs once
+ * per instantiation with the arguments it is handed and writes to its own
+ * in-memory file system. Piper voices are trained on plain IPA with no
+ * separators, which is what --ipa produces, and eSpeak writes one line per
+ * clause.
+ *
+ * No -b is passed on purpose. Any value of it makes eSpeak read the text byte
+ * by byte, so the two bytes of an accented character are spelled out instead of
+ * spoken: "esta" became "est a-tilde" and "Onatiko" gained a tilde of its own.
+ * Left out, eSpeak detects the UTF-8 it is actually given.
+ *
+ * The WebAssembly binary is large, so it is downloaded once and handed to every
+ * later run, which keeps a call well under a fifth of a second.
+ *
+ * @param {Function} factory The module's default export.
+ * @param {Function} fetchBinary Loader for the .wasm, cached between visits.
+ * @param {String} wasmurl Where the .wasm lives; empty lets eSpeak find it.
+ * @return {Function} phonemize(text, language)
+ */
+export const espeakPhonemizer = (factory, fetchBinary, wasmurl) => {
+    let binary = null;
+
+    return async (text, language) => {
+        if (wasmurl && !binary) {
+            binary = await fetchBinary(wasmurl);
+        }
+
+        const errors = [];
+        const options = {
+            arguments: [
+                '--phonout', ESPEAK_OUTPUT,
+                '--sep=',
+                '-q',
+                '--ipa',
+                '-v', language,
+                String(text),
+            ],
+            print: () => {},
+            printErr: (line) => errors.push(String(line)),
+        };
+        if (binary) {
+            options.wasmBinary = binary;
+        }
+
+        // A language eSpeak does not carry makes it exit before writing
+        // anything, so both the run and the read are reported as one failure.
+        let written = null;
+        try {
+            const espeak = await factory(options);
+            written = espeak.FS.readFile(ESPEAK_OUTPUT, {encoding: 'utf8'});
+        } catch (e) {
+            written = null;
+        }
+        if (written === null) {
+            throw new Error('eSpeak NG cannot speak "' + language + '"'
+                + (errors.length ? ': ' + errors.join(' ') : ''));
+        }
+
+        return String(written)
+            .split('\n')
+            .map((line) => line.trim())
+            .filter((line) => line !== '');
+    };
+};
+
+/**
+ * The phonemize(text, language) of whatever module the administrator pointed at.
+ *
+ * A module exporting phonemize() is used as it is; anything else is taken for
+ * an eSpeak NG Emscripten build and wrapped.
+ *
+ * @param {Object} namespace
+ * @param {Function} fetchBinary
+ * @param {String} wasmurl
+ * @return {Function}
+ */
+export const resolvePhonemizer = (namespace, fetchBinary, wasmurl) => {
+    if (namespace && typeof namespace.phonemize === 'function') {
+        return namespace.phonemize;
+    }
+
+    const factory = namespace && (namespace.default || namespace);
+    if (typeof factory === 'function') {
+        return espeakPhonemizer(factory, fetchBinary, wasmurl);
+    }
+
+    throw new Error('The phonemizer module exports neither phonemize() nor an eSpeak NG build');
+};
+
+/**
  * Default dependency set. Tests replace these to keep the runtime out.
  *
  * @return {Object}
@@ -255,6 +360,7 @@ const defaultDeps = () => ({
     }),
     getOrt: () => window.ort,
     hasWebGpu: hasWebGpu,
+    resolvePhonemizer: resolvePhonemizer,
 });
 
 /**
@@ -271,6 +377,7 @@ const defaultDeps = () => ({
  * @param {String} config.orturl URL of the ONNX Runtime Web UMD build.
  * @param {String} [config.wasmpath] Directory holding the runtime's .wasm files.
  * @param {String} config.phonemizerurl URL of the eSpeak NG phonemizer ES module.
+ * @param {String} [config.phonemizerwasm] URL of its .wasm, when it ships one.
  * @param {String} config.loaderurl URL of js/esm-bridge.js.
  * @param {String} [config.language] eSpeak voice name; defaults to the one in the voice config.
  * @param {Object} [deps] Injected loaders, for testing.
@@ -286,6 +393,13 @@ export const createPiperEngine = (config, deps) => {
     let ort = null;
     let starting = null;
     let failed = false;
+
+    /**
+     * The eSpeak voice this model was trained with.
+     *
+     * @return {String}
+     */
+    const voiceLanguage = () => config.language || (voice && voice.espeak && voice.espeak.voice) || 'eu';
 
     // One inference at a time: the next chunk is prepared while the current one
     // plays, and two simultaneous runs would fight over the same GPU context.
@@ -310,12 +424,15 @@ export const createPiperEngine = (config, deps) => {
         }
 
         const namespace = await io.loadModule(config.loaderurl, config.phonemizerurl, 'ahottsPhonemizer');
-        phonemize = namespace.phonemize;
-        if (typeof phonemize !== 'function') {
-            throw new Error('The phonemizer module exports no phonemize()');
-        }
+        phonemize = io.resolvePhonemizer(namespace, io.fetchBinary, config.phonemizerwasm || '');
 
         voice = await io.fetchJson(configurl);
+
+        // Phonemize one word before going any further. An eSpeak build without
+        // this language would otherwise start cleanly and then fail on every
+        // chunk, leaving the learner with silence and no explanation.
+        await phonemize(LANGUAGE_PROBE, voiceLanguage());
+
         const model = await io.fetchBinary(config.modelurl);
 
         const wanted = config.backend || 'auto';
@@ -343,8 +460,7 @@ export const createPiperEngine = (config, deps) => {
      * @return {Promise<String>} Object URL of the resulting WAV.
      */
     const synthesise = async (text) => {
-        const language = config.language || (voice.espeak && voice.espeak.voice) || 'eu';
-        const phonemes = await phonemize(text, language);
+        const phonemes = await phonemize(text, voiceLanguage());
         const joined = Array.isArray(phonemes) ? phonemes.join(' ') : String(phonemes);
         const ids = phonemesToIds(joined, voice.phoneme_id_map);
         if (ids.length <= 3) {

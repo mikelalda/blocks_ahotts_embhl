@@ -26,4 +26,4 @@
 $string['listentext'] = "Klausyti";
 
 // Listen button descriptive title text.
-$string['listen_titletext'] = "Klausyti šio puslapio naudojant ReadSpeaker";
+$string['listen_titletext'] = "Klausyti šio puslapio naudojant BirtSpeaker";

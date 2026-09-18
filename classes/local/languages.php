@@ -29,9 +29,10 @@ defined('MOODLE_INTERNAL') || die();
 /**
  * Builds the language and engine configuration handed to amd/src/speech.js.
  *
- * Basque is spoken by the itzune Piper voices running in the browser, with the
- * aHoTTS API behind them; every other language is spoken by the browser's Web
- * Speech API, with the API behind it when one is configured.
+ * Every language with a Piper voice is spoken in the browser by that voice;
+ * behind it come the browser's own Web Speech API and the aHoTTS API, when one
+ * is configured. Basque is the exception: no browser ships a Basque voice, and
+ * reading it with a Spanish one is worse than not offering the button.
  */
 class languages {
 
@@ -62,10 +63,44 @@ class languages {
         'ca' => 'ona',
     ];
 
-    /** @var array The itzune Piper voices, and where they are published. */
+    /**
+     * @var string Default phonemizer: an eSpeak NG build carrying every language.
+     *
+     * It has to be a full build. The widely used phonemizer npm package only
+     * carries English, and with it the Basque voices produce no sound at all.
+     */
+    const DEFAULT_PHONEMIZER = 'https://cdn.jsdelivr.net/npm/espeak-ng@1.0.2/dist/espeak-ng.js';
+
+    /** @var string The WebAssembly binary of DEFAULT_PHONEMIZER, fetched once and reused. */
+    const DEFAULT_PHONEMIZER_WASM = 'https://cdn.jsdelivr.net/npm/espeak-ng@1.0.2/dist/espeak-ng.wasm';
+
+    /**
+     * @var array The Piper voices offered per language, and where they are published.
+     *
+     * Basque is spoken by the itzune voices; the others come from the Piper
+     * project's own collection. Every one of them carries a single speaker, so
+     * the engine never has to pick a voice from inside a model.
+     */
     const PIPER_VOICES = [
-        'antton' => 'https://huggingface.co/itzune/antton-tts/resolve/main/eu-antton-medium.onnx',
-        'maider' => 'https://huggingface.co/itzune/maider-tts/resolve/main/eu-maider-medium.onnx',
+        'eu' => [
+            'antton' => 'https://huggingface.co/itzune/antton-tts/resolve/main/eu-antton-medium.onnx',
+            'maider' => 'https://huggingface.co/itzune/maider-tts/resolve/main/eu-maider-medium.onnx',
+        ],
+        'es' => [
+            'davefx' => 'https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_ES/davefx/medium/es_ES-davefx-medium.onnx',
+            'claude' => 'https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_MX/claude/high/es_MX-claude-high.onnx',
+        ],
+        'en' => [
+            'alba' => 'https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alba/medium/en_GB-alba-medium.onnx',
+            'ryan' => 'https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx',
+        ],
+    ];
+
+    /** @var array The voice a language starts with when the administrator has chosen none. */
+    const DEFAULT_PIPER_VOICES = [
+        'eu' => 'antton',
+        'es' => 'davefx',
+        'en' => 'alba',
     ];
 
     /**
@@ -174,29 +209,59 @@ class languages {
     /**
      * The Piper voices available in the browser, with their model URLs.
      *
+     * @param string[]|null $codes Languages to list voices for; null lists them all.
      * @return array[] [{id, label, modelurl, language}]
      */
-    public static function piper_voices(): array {
+    public static function piper_voices(?array $codes = null): array {
+        $wanted = $codes === null ? null : array_map([self::class, 'normalise'], $codes);
         $voices = [];
 
-        foreach (self::PIPER_VOICES as $id => $default) {
-            $url = trim((string) get_config('block_ahotts_embhl', 'pipermodel_' . $id));
-            if ($url === '') {
-                $url = $default;
+        foreach (self::PIPER_VOICES as $language => $published) {
+            if ($wanted !== null && !in_array($language, $wanted, true)) {
+                continue;
             }
-            $voices[] = [
-                'id' => $id,
-                'label' => get_string('pipervoice_' . $id, 'block_ahotts_embhl'),
-                'modelurl' => $url,
-                'language' => 'eu',
-            ];
+            foreach ($published as $id => $default) {
+                $url = trim((string) get_config('block_ahotts_embhl', 'pipermodel_' . $id));
+                if ($url === '') {
+                    $url = $default;
+                }
+                $voices[] = [
+                    'id' => $id,
+                    'label' => get_string('pipervoice_' . $id, 'block_ahotts_embhl'),
+                    'modelurl' => $url,
+                    'language' => $language,
+                ];
+            }
         }
 
         return $voices;
     }
 
     /**
-     * Whether the in-browser Basque voices are switched on and usable.
+     * The Piper voice each language starts with.
+     *
+     * @param string[] $codes
+     * @return array Language code => voice id.
+     */
+    public static function default_piper_voices(array $codes): array {
+        $defaults = [];
+
+        foreach ($codes as $code) {
+            $code = self::normalise($code);
+            if (!isset(self::PIPER_VOICES[$code])) {
+                continue;
+            }
+            $configured = (string) get_config('block_ahotts_embhl', 'pipervoice_' . $code);
+            $defaults[$code] = isset(self::PIPER_VOICES[$code][$configured])
+                ? $configured
+                : (self::DEFAULT_PIPER_VOICES[$code] ?? array_key_first(self::PIPER_VOICES[$code]));
+        }
+
+        return $defaults;
+    }
+
+    /**
+     * Whether the in-browser neural voices are switched on and usable.
      *
      * @return bool
      */
@@ -224,12 +289,13 @@ class languages {
         $code = self::normalise($code);
         $engines = [];
 
-        // Basque: the local itzune voice first, the aHoTTS service behind it.
-        if ($code === 'eu' && $piperenabled) {
+        // The local neural voice comes first for every language that has one.
+        if ($piperenabled && !empty(self::PIPER_VOICES[$code])) {
             $engines[] = ['kind' => 'piper'];
         }
 
-        // Everything else is read by the browser itself.
+        // The browser's own voice sits behind it, for when the model cannot be
+        // downloaded.
         if ($code !== 'eu') {
             $engines[] = ['kind' => 'webspeech'];
         }

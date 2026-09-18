@@ -27,4 +27,4 @@
 $string['listentext'] = "Dinle";
 
 // Listen button descriptive title text
-$string['listen_titletext'] = "Bu sayfayı ReadSpeaker ile dinle";
+$string['listen_titletext'] = "Bu sayfayı BirtSpeaker ile dinle";

@@ -137,15 +137,16 @@ class block_ahotts_embhl extends block_base {
         ];
 
         if ($piperenabled) {
-            // Everything the browser needs to run an itzune voice locally.
+            // Everything the browser needs to run a voice locally.
             $jsconfig['piper'] = [
-                'voice' => get_config('block_ahotts_embhl', 'pipervoice') ?: 'antton',
+                'defaults' => \block_ahotts_embhl\local\languages::default_piper_voices($codes),
                 'chooser' => (bool) get_config('block_ahotts_embhl', 'pipervoicechooser'),
-                'voices' => \block_ahotts_embhl\local\languages::piper_voices(),
+                'voices' => \block_ahotts_embhl\local\languages::piper_voices($codes),
                 'backend' => get_config('block_ahotts_embhl', 'piperbackend') ?: 'auto',
                 'orturl' => trim((string) get_config('block_ahotts_embhl', 'piperort')),
                 'wasmpath' => trim((string) get_config('block_ahotts_embhl', 'piperwasmpath')),
                 'phonemizerurl' => trim((string) get_config('block_ahotts_embhl', 'piperphonemizer')),
+                'phonemizerwasm' => trim((string) get_config('block_ahotts_embhl', 'piperphonemizerwasm')),
                 'loaderurl' => (new moodle_url('/blocks/ahotts_embhl/js/esm-bridge.js'))->out(false),
             ];
         }

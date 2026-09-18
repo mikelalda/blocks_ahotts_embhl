@@ -23,6 +23,9 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+// General Strings.
+$string['pluginname'] = 'BirtSpeaker';
+
 // Listen button text
 $string['listentext'] = "Entzun";
 
@@ -33,7 +36,7 @@ $string['resumetext'] = "Jarraitu";
 $string['stoptext'] = "Gelditu";
 
 // Listen button descriptive title text
-$string['listen_titletext'] = "Orri hau entzun ReadSpeaker erabiliz";
+$string['listen_titletext'] = "Orri hau entzun BirtSpeaker erabiliz";
 // SCORM eta kanpoko edukia.
 $string['header_scorm'] = 'SCORM eta kanpoko edukia';
 $string['header_scorm_help'] = 'Nabigatzaileak ezin du beste domeinu batetik zerbitzatutako iframe baten edukia irakurri: jatorri bereko politikak galarazten du. Halako pakete bat irakurgarria izango da soilik zubi lankidea (bridge/ahotts-scorm-bridge.js) badakar eta bere jatorria beheko zerrendan badago. Moodle honek berak zerbitzatzen dituen SCORMak zuzenean irakurtzen dira, konfiguraziorik gabe.';
@@ -61,30 +64,38 @@ $string['languagelabel'] = 'Hizkuntza';
 $string['voicelabel'] = 'Ahotsa';
 
 // Euskarazko ahotsak nabigatzailean (itzuneren Piper modeloak).
-$string['header_piper'] = 'Euskarazko ahotsak nabigatzailean (itzune)';
-$string['header_piper_help'] = 'itzuneren ahotsak (<a href="https://huggingface.co/itzune">huggingface.co/itzune</a>) ONNX formatuko Piper modeloak dira, lokalean exekutatzen direnak ONNX Runtime Web bidez, WebGPU erabiliz edo WebAssembly erabiliz WebGPUrik ez dagoenean. Ez da ezer zerbitzari batera bidaltzen, baina ahotsa (65 MB inguru) eta runtimea behin deskargatzen dira eta nabigatzailearen cachean gelditzen dira. Ezin badira kargatu, blokeak aHoTTS APIra jotzen du.';
-$string['piperenabled'] = 'Erabili itzuneren ahotsak nabigatzailean euskararako';
-$string['piperenabled_help'] = 'Desaktibatuta dagoenean, edo runtimea abiarazi ezin denean, euskara aHoTTS APIarekin sintetizatzen da.';
-$string['pipervoice'] = 'Euskarazko ahots lehenetsia';
+$string['header_piper'] = 'Ahots neuronalak nabigatzailean';
+$string['header_piper_help'] = 'Piper ahotsak ONNX modeloak dira, lokalean exekutatzen direnak ONNX Runtime Web bidez, WebGPU erabiliz edo WebAssembly erabiliz WebGPUrik ez dagoenean. Euskara itzuneren ahotsek irakurtzen dute (<a href="https://huggingface.co/itzune">huggingface.co/itzune</a>) eta gainerako hizkuntzak Piper proiektuaren ahotsek. Ez da ezer zerbitzari batera bidaltzen, baina ahots bakoitza (65 MB inguru) eta runtimea behin deskargatzen dira eta nabigatzailearen cachean gelditzen dira. Ezin badira kargatu, blokeak nabigatzailearen ahotsera edo aHoTTS APIra jotzen du.';
+$string['piperenabled'] = 'Erabili ahots neuronalak nabigatzailean';
+$string['piperenabled_help'] = 'Irakurlearen ordenagailuan bertan exekutatzen den ahots batekin irakurtzen du orria, beraz ez da testurik inora bidaltzen. Desaktibatuta dagoenean, edo runtimea abiarazi ezin denean, nabigatzailearen ahotsa edo aHoTTS APIa erabiltzen da. Euskarak ez du nabigatzaileko ahotsik, beraz hau gabe APIa behar du.';
+$string['pipervoice_lang'] = '{$a} ahots lehenetsia';
 $string['pipervoice_help'] = 'Irakurleak beste bat aukeratzen ez duen bitartean erabiliko den ahotsa.';
-$string['pipervoice_antton'] = 'Antton (gizonezkoa)';
-$string['pipervoice_maider'] = 'Maider (emakumezkoa)';
-$string['pipervoicechooser'] = 'Utzi euskarazko ahotsa aukeratzen';
-$string['pipervoicechooser_help'] = 'Ahots menua eransten dio blokeari euskaraz irakurtzen ari den bitartean.';
+$string['pipervoice_antton'] = 'Antton (euskara, gizonezkoa)';
+$string['pipervoice_maider'] = 'Maider (euskara, emakumezkoa)';
+$string['pipervoice_davefx'] = 'Davefx (Espainiako gaztelania, gizonezkoa)';
+$string['pipervoice_claude'] = 'Claude (Mexikoko gaztelania, emakumezkoa)';
+$string['pipervoice_alba'] = 'Alba (ingeles britainiarra, emakumezkoa)';
+$string['pipervoice_ryan'] = 'Ryan (ingeles amerikarra, gizonezkoa)';
+$string['pipervoicelang_eu'] = 'Euskarazko';
+$string['pipervoicelang_es'] = 'Gaztelaniazko';
+$string['pipervoicelang_en'] = 'Ingelesezko';
+$string['pipervoicechooser'] = 'Utzi ahotsa aukeratzen';
+$string['pipervoicechooser_help'] = 'Irakurtzen ari den hizkuntzarako eskuragarri dauden ahotsen menua eransten dio blokeari.';
 $string['piperbackend'] = 'Exekuzio motorra';
 $string['piperbackend_help'] = 'WebGPU azkarragoa da eskuragarri dagoen lekuan. «Automatikoa» aukerak nabigatzaileak eskaintzen badu erabiltzen du eta bestela WebAssemblyra jotzen du.';
 $string['piperbackend_auto'] = 'Automatikoa (WebGPU eta, bestela, WebAssembly)';
 $string['piperbackend_webgpu'] = 'WebGPU';
 $string['piperbackend_wasm'] = 'WebAssembly';
-$string['pipermodel_antton'] = 'Antton modeloaren URLa';
-$string['pipermodel_maider'] = 'Maider modeloaren URLa';
+$string['pipermodel'] = '{$a} modeloaren URLa';
 $string['pipermodel_help'] = 'Ahotsaren .onnx fitxategiaren URLa. Bere konfigurazioa URL horri berari .json erantsita irakurtzen da. Zerbitzatu zure gunetik hirugarrenen mende ez egoteko eta, domeinu honetan ez badago, ziurtatu erantzunak jatorri arteko irakurketak onartzen dituela.';
 $string['piperort'] = 'ONNX Runtime Web URLa';
 $string['piperort_help'] = 'ONNX Runtime Weben UMD konpilazioaren URLa, adibidez ort.webgpu.min.js.';
 $string['piperwasmpath'] = 'ONNX Runtimeren WebAssembly direktorioa';
 $string['piperwasmpath_help'] = 'Runtimearen .wasm fitxategiak dituen direktorioa, amaierako barrarekin.';
 $string['piperphonemizer'] = 'Fonemizatzailearen URLa';
-$string['piperphonemizer_help'] = 'eSpeak NG fonemizatzailearen ES moduluaren URLa, testua ahotsak espero dituen fonemetan bihurtzen duena.';
+$string['piperphonemizer_help'] = 'eSpeak NG fonemizatzailearen ES moduluaren URLa, testua ahotsak espero dituen fonemetan bihurtzen duena. Euskara daramaten konpilazioa izan behar du: ingelesa baino ez dutenekin itzuneko ahotsak mutu geratzen dira.';
+$string['piperphonemizerwasm'] = 'Fonemizatzailearen WebAssembly fitxategia';
+$string['piperphonemizerwasm_help'] = 'Fonemizatzailearen .wasm fitxategiaren URLa. Behin deskargatu eta esaldi bakoitzean berrerabiltzen da, moduluari bakoitzean bilatzen uztea baino askoz azkarragoa dena. Hutsik utzi moduluak berak aurki dezan.';
 
 // Erreprodukzioaren egoera.
 $string['status_preparingvoice'] = 'Ahotsa prestatzen. Lehen aldian deskargatu egin behar da.';

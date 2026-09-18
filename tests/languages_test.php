@@ -98,13 +98,33 @@ class languages_test extends \advanced_testcase {
         $this->assertSame([], languages::engines_for('eu', false));
     }
 
-    public function test_other_languages_are_read_by_the_browser_first(): void {
+    public function test_languages_with_a_local_voice_prefer_it_to_the_browser(): void {
         $this->resetAfterTest(true);
         set_config('apiurl_es', 'https://tts.example.local/es', 'block_ahotts_embhl');
         set_config('apiurl_en', '', 'block_ahotts_embhl');
 
-        $this->assertSame(['webspeech', 'api'], array_column(languages::engines_for('es', true), 'kind'));
-        $this->assertSame(['webspeech'], array_column(languages::engines_for('en', true), 'kind'));
+        // The browser's own voice stays behind the local one, for when the model
+        // cannot be downloaded.
+        $this->assertSame(
+            ['piper', 'webspeech', 'api'],
+            array_column(languages::engines_for('es', true), 'kind')
+        );
+        $this->assertSame(['piper', 'webspeech'], array_column(languages::engines_for('en', true), 'kind'));
+    }
+
+    public function test_languages_with_no_local_voice_are_read_by_the_browser(): void {
+        $this->resetAfterTest(true);
+        set_config('apiurl_fr', '', 'block_ahotts_embhl');
+
+        // French has no Piper voice published with the block.
+        $this->assertSame(['webspeech'], array_column(languages::engines_for('fr', true), 'kind'));
+    }
+
+    public function test_the_browser_speaks_alone_when_the_local_voices_are_off(): void {
+        $this->resetAfterTest(true);
+        set_config('apiurl_es', '', 'block_ahotts_embhl');
+
+        $this->assertSame(['webspeech'], array_column(languages::engines_for('es', false), 'kind'));
     }
 
     public function test_build_describes_every_offered_language(): void {
@@ -118,6 +138,7 @@ class languages_test extends \advanced_testcase {
         $this->assertSame('eu-ES', $built[0]['bcp47']);
         $this->assertNotEmpty($built[0]['label']);
         $this->assertSame(['piper', 'api'], array_column($built[0]['engines'], 'kind'));
+        $this->assertSame(['piper', 'webspeech'], array_column($built[1]['engines'], 'kind'));
         $this->assertSame('es-ES', $built[1]['bcp47']);
     }
 
@@ -130,28 +151,59 @@ class languages_test extends \advanced_testcase {
         $this->assertSame(['es'], array_column($built, 'code'));
     }
 
-    public function test_piper_voices_point_at_the_itzune_models(): void {
+    public function test_piper_voices_are_listed_per_language(): void {
         $this->resetAfterTest(true);
 
-        $voices = languages::piper_voices();
+        $this->assertSame(['antton', 'maider'], array_column(languages::piper_voices(['eu']), 'id'));
+        $this->assertSame(['davefx', 'claude'], array_column(languages::piper_voices(['es']), 'id'));
 
-        $this->assertSame(['antton', 'maider'], array_column($voices, 'id'));
-        foreach ($voices as $voice) {
+        $both = languages::piper_voices(['eu', 'es']);
+        $this->assertSame(['eu', 'eu', 'es', 'es'], array_column($both, 'language'));
+
+        foreach (languages::piper_voices() as $voice) {
             $this->assertStringContainsString('.onnx', $voice['modelurl']);
-            $this->assertSame('eu', $voice['language']);
             $this->assertNotEmpty($voice['label']);
+            $this->assertArrayHasKey($voice['language'], languages::PIPER_VOICES);
         }
+    }
+
+    public function test_piper_voices_of_a_language_with_none_are_empty(): void {
+        $this->resetAfterTest(true);
+
+        $this->assertSame([], languages::piper_voices(['fr']));
+    }
+
+    public function test_default_piper_voice_falls_back_when_the_setting_makes_no_sense(): void {
+        $this->resetAfterTest(true);
+        set_config('pipervoice_eu', 'maider', 'block_ahotts_embhl');
+        // A voice of another language is not a voice for this one.
+        set_config('pipervoice_es', 'antton', 'block_ahotts_embhl');
+
+        $defaults = languages::default_piper_voices(['eu', 'es', 'fr']);
+
+        $this->assertSame('maider', $defaults['eu']);
+        $this->assertSame('davefx', $defaults['es']);
+        $this->assertArrayNotHasKey('fr', $defaults, 'a language with no voices gets no default');
     }
 
     public function test_piper_voices_honour_a_self_hosted_model(): void {
         $this->resetAfterTest(true);
         set_config('pipermodel_antton', 'https://moodle.example.local/voices/antton.onnx', 'block_ahotts_embhl');
 
-        $voices = languages::piper_voices();
+        $voices = languages::piper_voices(['eu']);
 
         $this->assertSame('https://moodle.example.local/voices/antton.onnx', $voices[0]['modelurl']);
         // The voice that was not overridden keeps its published URL.
         $this->assertStringContainsString('huggingface.co/itzune', $voices[1]['modelurl']);
+    }
+
+    public function test_the_default_phonemizer_carries_more_than_english(): void {
+        // The block first shipped pointing at phonemizer@1.2.1, an eSpeak NG
+        // build carrying English alone. It rejects every Basque word, so the
+        // itzune voices produced no sound at all. Only a full build will do.
+        $this->assertStringNotContainsString('npm/phonemizer@', languages::DEFAULT_PHONEMIZER);
+        $this->assertStringContainsString('espeak-ng', languages::DEFAULT_PHONEMIZER);
+        $this->assertStringEndsWith('.wasm', languages::DEFAULT_PHONEMIZER_WASM);
     }
 
     public function test_piper_is_only_enabled_when_it_can_actually_run(): void {

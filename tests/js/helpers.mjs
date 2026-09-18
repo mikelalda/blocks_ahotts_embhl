@@ -64,7 +64,8 @@ export const loadSpeech = (html, url) => {
         .replace(/^export const /gm, 'const ');
     dom.window.eval(piper + '\n' + speech
         + '\n;window.__speech = {init: init, testing: __testing};'
-        + '\n;window.__piper = {phonemesToIds, encodeWav, createPiperEngine, hasWebGpu};');
+        + '\n;window.__piper = {phonemesToIds, encodeWav, createPiperEngine, hasWebGpu,'
+        + ' espeakPhonemizer, resolvePhonemizer};');
     return {
         dom,
         window: dom.window,

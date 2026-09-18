@@ -27,4 +27,4 @@
 $string['listentext'] = "朗读";
 
 // Listen button descriptive title text
-$string['listen_titletext'] = "让ReadSpeaker为你朗读页面";
+$string['listen_titletext'] = "让BirtSpeaker为你朗读页面";

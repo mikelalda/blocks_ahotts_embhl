@@ -25,8 +25,8 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version = 2026091801;  // YYYYMMDDHH (year, month, day, 24-hr time)
+$plugin->version = 2026091804;  // YYYYMMDDHH (year, month, day, 24-hr time)
 $plugin->requires = 2015111600; // YYYYMMDDHH
 $plugin->component = 'block_ahotts_embhl'; // Full name of the plugin (used for diagnostics)
 $plugin->maturity  = MATURITY_STABLE;
-$plugin->release = "dev-r124-itzune-voices"; 
+$plugin->release = "dev-r127-piper-voices"; 

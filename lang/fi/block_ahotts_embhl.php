@@ -27,4 +27,4 @@
 $string['listentext'] = "Kuuntele";
 
 // Listen button descriptive title text
-$string['listen_titletext'] = "Kuuntele ReadSpeakerilla";
+$string['listen_titletext'] = "Kuuntele BirtSpeakerilla";

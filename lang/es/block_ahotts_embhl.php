@@ -23,6 +23,9 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
+// General Strings.
+$string['pluginname'] = 'BirtSpeaker';
+
 // Listen button text
 $string['listentext'] = "Escuchar";
 
@@ -33,7 +36,7 @@ $string['resumetext'] = "Reanudar";
 $string['stoptext'] = "Detener";
 
 // Listen button descriptive title text
-$string['listen_titletext'] = "Escucha esta página utilizando ReadSpeaker";
+$string['listen_titletext'] = "Escucha esta página utilizando BirtSpeaker";
 // SCORM y contenido externo.
 $string['header_scorm'] = 'SCORM y contenido externo';
 $string['header_scorm_help'] = 'El navegador no puede leer el contenido de un iframe servido desde otro dominio: lo impide la política de mismo origen. Un paquete así solo se puede leer si incorpora el puente cooperativo (bridge/ahotts-scorm-bridge.js) y su origen figura en la lista. Los SCORM servidos por este propio Moodle se leen directamente y no necesitan configuración.';
@@ -61,30 +64,38 @@ $string['languagelabel'] = 'Idioma';
 $string['voicelabel'] = 'Voz';
 
 // Voces de euskera en el navegador (modelos Piper de itzune).
-$string['header_piper'] = 'Voces de euskera en el navegador (itzune)';
-$string['header_piper_help'] = 'Las voces de itzune (<a href="https://huggingface.co/itzune">huggingface.co/itzune</a>) son modelos Piper en formato ONNX que se ejecutan localmente con ONNX Runtime Web sobre WebGPU, o sobre WebAssembly cuando no hay WebGPU. No se envía nada a ningún servidor, pero la voz (unos 65 MB) y el runtime se descargan una vez y quedan en la caché del navegador. Si no se pueden cargar, el bloque recurre a la API de aHoTTS.';
-$string['piperenabled'] = 'Usar las voces de itzune en el navegador para euskera';
-$string['piperenabled_help'] = 'Si se desactiva, o si el runtime no arranca, el euskera se sintetiza con la API de aHoTTS.';
-$string['pipervoice'] = 'Voz de euskera por defecto';
+$string['header_piper'] = 'Voces neuronales en el navegador (Piper)';
+$string['header_piper_help'] = 'Las voces Piper son modelos ONNX que se ejecutan localmente con ONNX Runtime Web sobre WebGPU, o sobre WebAssembly cuando no hay WebGPU. El euskera lo leen las voces de itzune (<a href="https://huggingface.co/itzune">huggingface.co/itzune</a>) y el resto de idiomas, voces del proyecto Piper. No se envía nada a ningún servidor, pero cada voz (unos 65 MB) y el runtime se descargan una vez y quedan en la caché del navegador. Si no se pueden cargar, el bloque recurre a la voz del navegador o a la API de aHoTTS.';
+$string['piperenabled'] = 'Usar voces neuronales en el navegador';
+$string['piperenabled_help'] = 'Lee la página con una voz que se ejecuta en el equipo de quien lee, así que no se envía texto a ninguna parte. Si se desactiva, o si el runtime no arranca, se usa la voz del navegador o la API de aHoTTS. El euskera no tiene voz de navegador, así que sin esto necesita la API.';
+$string['pipervoice_lang'] = 'Voz por defecto para {$a}';
 $string['pipervoice_help'] = 'Voz usada mientras quien lee no elija otra.';
-$string['pipervoice_antton'] = 'Antton (masculina)';
-$string['pipervoice_maider'] = 'Maider (femenina)';
-$string['pipervoicechooser'] = 'Permitir elegir la voz de euskera';
-$string['pipervoicechooser_help'] = 'Añade un menú de voz al bloque mientras se lee en euskera.';
+$string['pipervoice_antton'] = 'Antton (euskera, masculina)';
+$string['pipervoice_maider'] = 'Maider (euskera, femenina)';
+$string['pipervoice_davefx'] = 'Davefx (castellano de España, masculina)';
+$string['pipervoice_claude'] = 'Claude (castellano de México, femenina)';
+$string['pipervoice_alba'] = 'Alba (inglés británico, femenina)';
+$string['pipervoice_ryan'] = 'Ryan (inglés americano, masculina)';
+$string['pipervoicelang_eu'] = 'euskera';
+$string['pipervoicelang_es'] = 'castellano';
+$string['pipervoicelang_en'] = 'inglés';
+$string['pipervoicechooser'] = 'Permitir elegir la voz';
+$string['pipervoicechooser_help'] = 'Añade al bloque un menú con las voces disponibles para el idioma que se está leyendo.';
 $string['piperbackend'] = 'Motor de ejecución';
 $string['piperbackend_help'] = 'WebGPU es más rápido donde está disponible. «Automático» lo usa si el navegador lo ofrece y si no recurre a WebAssembly.';
 $string['piperbackend_auto'] = 'Automático (WebGPU y, si no, WebAssembly)';
 $string['piperbackend_webgpu'] = 'WebGPU';
 $string['piperbackend_wasm'] = 'WebAssembly';
-$string['pipermodel_antton'] = 'URL del modelo Antton';
-$string['pipermodel_maider'] = 'URL del modelo Maider';
+$string['pipermodel'] = 'URL del modelo de {$a}';
 $string['pipermodel_help'] = 'URL del fichero .onnx de la voz. Su configuración se lee de esa misma URL añadiéndole .json. Sírvelo desde tu propio sitio para no depender de terceros y, si no está en este dominio, asegúrate de que la respuesta permite lecturas entre orígenes.';
 $string['piperort'] = 'URL de ONNX Runtime Web';
 $string['piperort_help'] = 'URL de la compilación UMD de ONNX Runtime Web, por ejemplo ort.webgpu.min.js.';
 $string['piperwasmpath'] = 'Directorio WebAssembly de ONNX Runtime';
 $string['piperwasmpath_help'] = 'Directorio con los ficheros .wasm del runtime, con barra final.';
 $string['piperphonemizer'] = 'URL del fonemizador';
-$string['piperphonemizer_help'] = 'URL del módulo ES del fonemizador eSpeak NG, que convierte el texto en los fonemas que espera la voz.';
+$string['piperphonemizer_help'] = 'URL del módulo ES del fonemizador eSpeak NG, que convierte el texto en los fonemas que espera la voz. Tiene que ser una compilación que incluya el euskera: las que solo llevan inglés dejan mudas las voces de itzune.';
+$string['piperphonemizerwasm'] = 'Fichero WebAssembly del fonemizador';
+$string['piperphonemizerwasm_help'] = 'URL del fichero .wasm del fonemizador. Se descarga una vez y se reutiliza en cada frase, lo que es mucho más rápido que dejar que el módulo lo busque cada vez. Déjalo vacío para que lo localice el propio módulo.';
 
 // Estado de la reproducción.
 $string['status_preparingvoice'] = 'Preparando la voz. La primera vez hay que descargarla.';

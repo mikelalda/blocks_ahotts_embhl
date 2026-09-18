@@ -1,6 +1,6 @@
 /**
  * Choosing the reading language and the engine that speaks it: Basque with the
- * local itzune voices, everything else with the browser.
+ * local Piper voices, and the languages without one with the browser.
  */
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -25,7 +25,7 @@ const STATUS = {
 };
 
 const PIPER = {
-    voice: 'antton',
+    defaults: {eu: 'antton', es: 'davefx'},
     chooser: true,
     backend: 'auto',
     orturl: 'https://moodle.example.org/ort/ort.webgpu.min.js',
@@ -35,6 +35,8 @@ const PIPER = {
     voices: [
         {id: 'antton', label: 'Antton', modelurl: 'https://models.example.org/antton.onnx', language: 'eu'},
         {id: 'maider', label: 'Maider', modelurl: 'https://models.example.org/maider.onnx', language: 'eu'},
+        {id: 'davefx', label: 'Davefx', modelurl: 'https://models.example.org/davefx.onnx', language: 'es'},
+        {id: 'claude', label: 'Claude', modelurl: 'https://models.example.org/claude.onnx', language: 'es'},
     ],
 };
 
@@ -45,7 +47,11 @@ const LANGUAGES = [
     },
     {
         code: 'es', label: 'Espainiera', bcp47: 'es-ES',
-        engines: [{kind: 'webspeech'}, {kind: 'api', url: 'https://tts.example.org/es', language: 'es', voice: 'laura'}],
+        engines: [
+            {kind: 'piper'},
+            {kind: 'webspeech'},
+            {kind: 'api', url: 'https://tts.example.org/es', language: 'es', voice: 'laura'},
+        ],
     },
     {code: 'en', label: 'Ingelesa', bcp47: 'en-GB', engines: [{kind: 'webspeech'}]},
 ];
@@ -119,9 +125,9 @@ const start = (overrides = {}, options = {}) => {
     if (stored.language) {
         speech.window.localStorage.setItem('block_ahotts_embhl_language', stored.language);
     }
-    if (stored.voice) {
-        speech.window.localStorage.setItem('block_ahotts_embhl_voice', stored.voice);
-    }
+    Object.entries(stored.voices || {}).forEach(([code, voice]) => {
+        speech.window.localStorage.setItem('block_ahotts_embhl_voice:' + code, voice);
+    });
 
     speech.init(Object.assign({
         readid: 'region-main',
@@ -228,23 +234,36 @@ test('Basque is read by the local itzune voice', async () => {
     assert.deepEqual(ctx.log.map((entry) => entry.kind), ['piper']);
     assert.equal(ctx.built[0].kind, 'piper');
     assert.equal(ctx.built[0].config.modelurl, 'https://models.example.org/antton.onnx');
-    assert.equal(ctx.built[0].config.language, 'eu');
+    assert.equal(ctx.built[0].config.language, undefined, 'the model names its own eSpeak voice');
     assert.equal(ctx.built[0].config.backend, 'auto');
     assert.equal(ctx.status.textContent, '', 'a voice that starts raises no notice');
 });
 
-test('Spanish and English are read by the browser', async () => {
-    const spanish = start({lang: 'es'});
-    spanish.link.click();
+test('Spanish is read by its own local voice', async () => {
+    const ctx = start({lang: 'es'});
+    ctx.link.click();
     await tick(20);
-    assert.deepEqual(spanish.log.map((entry) => entry.kind), ['webspeech']);
-    assert.equal(spanish.built[0].lang, 'es-ES', 'with the right BCP-47 tag');
 
-    const english = start({lang: 'en'});
-    english.link.click();
+    assert.deepEqual(ctx.log.map((entry) => entry.kind), ['piper']);
+    assert.equal(ctx.built[0].config.modelurl, 'https://models.example.org/davefx.onnx');
+});
+
+test('a language with no local voice is read by the browser', async () => {
+    const ctx = start({lang: 'en'});
+    ctx.link.click();
     await tick(20);
-    assert.deepEqual(english.log.map((entry) => entry.kind), ['webspeech']);
-    assert.equal(english.built[0].lang, 'en-GB');
+
+    assert.deepEqual(ctx.log.map((entry) => entry.kind), ['webspeech']);
+    assert.equal(ctx.built[0].lang, 'en-GB', 'with the right BCP-47 tag');
+});
+
+test('Spanish falls back to the browser when its local voice cannot start', async () => {
+    const ctx = start({lang: 'es'}, {piperWarmup: false});
+    ctx.link.click();
+    await tick(20);
+
+    assert.deepEqual(ctx.log.map((entry) => entry.kind), ['webspeech']);
+    assert.equal(ctx.built[1].lang, 'es-ES');
 });
 
 test('Basque falls back to the aHoTTS API when the local voice cannot start', async () => {
@@ -297,7 +316,7 @@ test('the chooser offers the languages and remembers the choice', async () => {
     ctx.link.click();
     await tick(20);
 
-    assert.deepEqual(ctx.log.map((entry) => entry.kind), ['webspeech'], 'Spanish is read by the browser');
+    assert.deepEqual(ctx.log.map((entry) => entry.kind), ['piper'], 'Spanish has a local voice');
     assert.equal(ctx.window.localStorage.getItem('block_ahotts_embhl_language'), 'es');
 });
 
@@ -314,7 +333,7 @@ test('a language remembered from an earlier page is used again', async () => {
 });
 
 test('a voice remembered from an earlier page is used again', async () => {
-    const ctx = start({lang: 'eu'}, {stored: {voice: 'maider'}});
+    const ctx = start({lang: 'eu'}, {stored: {voices: {eu: 'maider'}}});
 
     assert.equal(ctx.document.querySelector('select.ahotts-voice').value, 'maider');
 
@@ -330,7 +349,7 @@ test('no language menu is shown unless the chooser mode is on', () => {
     assert.equal(ctx.document.querySelector('select.ahotts-language'), null);
 });
 
-test('the voice menu switches the itzune model that is loaded', async () => {
+test('the voice menu switches the model that is loaded', async () => {
     const ctx = start({lang: 'eu'});
 
     const select = ctx.document.querySelector('select.ahotts-voice');
@@ -343,7 +362,33 @@ test('the voice menu switches the itzune model that is loaded', async () => {
     await tick(20);
 
     assert.equal(ctx.built[0].config.modelurl, 'https://models.example.org/maider.onnx');
-    assert.equal(ctx.window.localStorage.getItem('block_ahotts_embhl_voice'), 'maider');
+    assert.equal(ctx.window.localStorage.getItem('block_ahotts_embhl_voice:eu'), 'maider');
+});
+
+test('the voice menu offers the voices of the language being read', () => {
+    const ctx = start({langmode: 'chooser', lang: 'eu'});
+    const languageSelect = ctx.document.querySelector('select.ahotts-language');
+    const voiceSelect = ctx.document.querySelector('select.ahotts-voice');
+
+    assert.deepEqual([...voiceSelect.options].map((option) => option.value), ['antton', 'maider']);
+
+    languageSelect.value = 'es';
+    languageSelect.dispatchEvent(new ctx.window.Event('change'));
+
+    assert.deepEqual([...voiceSelect.options].map((option) => option.value), ['davefx', 'claude']);
+    assert.equal(voiceSelect.value, 'davefx', 'and the default voice of that language is chosen');
+});
+
+test('a voice chosen for one language is not carried into another', async () => {
+    const ctx = start({langmode: 'chooser', lang: 'eu'}, {stored: {voices: {eu: 'maider'}}});
+    const languageSelect = ctx.document.querySelector('select.ahotts-language');
+
+    languageSelect.value = 'es';
+    languageSelect.dispatchEvent(new ctx.window.Event('change'));
+    ctx.link.click();
+    await tick(20);
+
+    assert.equal(ctx.built[0].config.modelurl, 'https://models.example.org/davefx.onnx');
 });
 
 test('the voice menu is hidden while a language without local voices is read', () => {
@@ -353,9 +398,9 @@ test('the voice menu is hidden while a language without local voices is read', (
 
     assert.equal(voiceSelect.hidden, false);
 
-    languageSelect.value = 'es';
+    languageSelect.value = 'en';
     languageSelect.dispatchEvent(new ctx.window.Event('change'));
-    assert.equal(voiceSelect.hidden, true, 'Spanish has no itzune voice to pick');
+    assert.equal(voiceSelect.hidden, true, 'English has no local voice to pick');
 
     languageSelect.value = 'eu';
     languageSelect.dispatchEvent(new ctx.window.Event('change'));
