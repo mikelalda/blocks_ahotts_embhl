@@ -103,6 +103,152 @@ if ($ADMIN->fulltree) {
         PARAM_INT
     ));
 
+    $settings->add(new admin_setting_heading(
+        'header_voices',
+        get_string('header_voices', 'block_ahotts_embhl'),
+        get_string('header_voices_help', 'block_ahotts_embhl')
+    ));
+
+    $settings->add(new admin_setting_configselect(
+        'block_ahotts_embhl/langmode',
+        get_string('langmode', 'block_ahotts_embhl'),
+        get_string('langmode_help', 'block_ahotts_embhl'),
+        'fixed',
+        array(
+            'fixed' => get_string('langmode_fixed', 'block_ahotts_embhl'),
+            'page' => get_string('langmode_page', 'block_ahotts_embhl'),
+            'content' => get_string('langmode_content', 'block_ahotts_embhl'),
+            'chooser' => get_string('langmode_chooser', 'block_ahotts_embhl')
+        )
+    ));
+
+    $settings->add(new admin_setting_configmultiselect(
+        'block_ahotts_embhl/chooserlangs',
+        get_string('chooserlangs', 'block_ahotts_embhl'),
+        get_string('chooserlangs_help', 'block_ahotts_embhl'),
+        array('eu', 'es', 'en'),
+        array(
+            'eu' => get_string('basque', 'block_ahotts_embhl'),
+            'es' => get_string('spanish_castilian', 'block_ahotts_embhl'),
+            'en' => get_string('english_brittish', 'block_ahotts_embhl'),
+            'fr' => get_string('french', 'block_ahotts_embhl'),
+            'ca' => get_string('catalan', 'block_ahotts_embhl'),
+            'gl' => get_string('gelician', 'block_ahotts_embhl'),
+            'de' => get_string('german', 'block_ahotts_embhl'),
+            'it' => get_string('italian', 'block_ahotts_embhl'),
+            'pt' => get_string('portuguese', 'block_ahotts_embhl')
+        )
+    ));
+
+    $settings->add(new admin_setting_heading(
+        'header_piper',
+        get_string('header_piper', 'block_ahotts_embhl'),
+        get_string('header_piper_help', 'block_ahotts_embhl')
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'block_ahotts_embhl/piperenabled',
+        get_string('piperenabled', 'block_ahotts_embhl'),
+        get_string('piperenabled_help', 'block_ahotts_embhl'), 1)
+    );
+
+    $settings->add(new admin_setting_configselect(
+        'block_ahotts_embhl/pipervoice',
+        get_string('pipervoice', 'block_ahotts_embhl'),
+        get_string('pipervoice_help', 'block_ahotts_embhl'),
+        'antton',
+        array(
+            'antton' => get_string('pipervoice_antton', 'block_ahotts_embhl'),
+            'maider' => get_string('pipervoice_maider', 'block_ahotts_embhl')
+        )
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'block_ahotts_embhl/pipervoicechooser',
+        get_string('pipervoicechooser', 'block_ahotts_embhl'),
+        get_string('pipervoicechooser_help', 'block_ahotts_embhl'), 1)
+    );
+
+    $settings->add(new admin_setting_configselect(
+        'block_ahotts_embhl/piperbackend',
+        get_string('piperbackend', 'block_ahotts_embhl'),
+        get_string('piperbackend_help', 'block_ahotts_embhl'),
+        'auto',
+        array(
+            'auto' => get_string('piperbackend_auto', 'block_ahotts_embhl'),
+            'webgpu' => get_string('piperbackend_webgpu', 'block_ahotts_embhl'),
+            'wasm' => get_string('piperbackend_wasm', 'block_ahotts_embhl')
+        )
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'block_ahotts_embhl/pipermodel_antton',
+        get_string('pipermodel_antton', 'block_ahotts_embhl'),
+        get_string('pipermodel_help', 'block_ahotts_embhl'),
+        \block_ahotts_embhl\local\languages::PIPER_VOICES['antton'],
+        PARAM_URL
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'block_ahotts_embhl/pipermodel_maider',
+        get_string('pipermodel_maider', 'block_ahotts_embhl'),
+        get_string('pipermodel_help', 'block_ahotts_embhl'),
+        \block_ahotts_embhl\local\languages::PIPER_VOICES['maider'],
+        PARAM_URL
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'block_ahotts_embhl/piperort',
+        get_string('piperort', 'block_ahotts_embhl'),
+        get_string('piperort_help', 'block_ahotts_embhl'),
+        'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.webgpu.min.js',
+        PARAM_URL
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'block_ahotts_embhl/piperwasmpath',
+        get_string('piperwasmpath', 'block_ahotts_embhl'),
+        get_string('piperwasmpath_help', 'block_ahotts_embhl'),
+        'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/',
+        PARAM_URL
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'block_ahotts_embhl/piperphonemizer',
+        get_string('piperphonemizer', 'block_ahotts_embhl'),
+        get_string('piperphonemizer_help', 'block_ahotts_embhl'),
+        'https://cdn.jsdelivr.net/npm/phonemizer@1.2.1/dist/phonemizer.js',
+        PARAM_URL
+    ));
+
+    $settings->add(new admin_setting_heading(
+        'header_scorm',
+        get_string('header_scorm', 'block_ahotts_embhl'),
+        get_string('header_scorm_help', 'block_ahotts_embhl')
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'block_ahotts_embhl/scormbridge',
+        get_string('scormbridge', 'block_ahotts_embhl'),
+        get_string('scormbridge_help', 'block_ahotts_embhl'), 0)
+    );
+
+    $settings->add(new admin_setting_configtextarea(
+        'block_ahotts_embhl/scormorigins',
+        get_string('scormorigins', 'block_ahotts_embhl'),
+        get_string('scormorigins_help', 'block_ahotts_embhl'),
+        '',
+        PARAM_RAW
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'block_ahotts_embhl/scormtimeout',
+        get_string('scormtimeout', 'block_ahotts_embhl'),
+        get_string('scormtimeout_help', 'block_ahotts_embhl'),
+        '2500',
+        PARAM_INT
+    ));
+
     $settings->add(new admin_setting_configselect(
         'block_ahotts_embhl/lang',
         get_string('lang', 'block_ahotts_embhl'),

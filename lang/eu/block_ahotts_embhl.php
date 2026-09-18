@@ -34,3 +34,59 @@ $string['stoptext'] = "Gelditu";
 
 // Listen button descriptive title text
 $string['listen_titletext'] = "Orri hau entzun ReadSpeaker erabiliz";
+// SCORM eta kanpoko edukia.
+$string['header_scorm'] = 'SCORM eta kanpoko edukia';
+$string['header_scorm_help'] = 'Nabigatzaileak ezin du beste domeinu batetik zerbitzatutako iframe baten edukia irakurri: jatorri bereko politikak galarazten du. Halako pakete bat irakurgarria izango da soilik zubi lankidea (bridge/ahotts-scorm-bridge.js) badakar eta bere jatorria beheko zerrendan badago. Moodle honek berak zerbitzatzen dituen SCORMak zuzenean irakurtzen dira, konfiguraziorik gabe.';
+$string['scormbridge'] = 'Gaitu jatorri arteko SCORM zubia';
+$string['scormbridge_help'] = 'Entzun botoiak kanpoko SCORM paketeei testua eskatzeko aukera ematen du, postMessage bidezko zubi lankidearen bitartez. Ez du eraginik jatorri bat gutxienez zerrendatu arte.';
+$string['scormorigins'] = 'Onartutako SCORM jatorriak';
+$string['scormorigins_help'] = 'Jatorri bat lerro bakoitzeko: eskema, ostalaria eta ataka aukerakoa, biderik gabe; adibidez <code>https://scorm.example.org</code>. Hasierako komodin bat onartzen da (<code>https://*.example.org</code>) eta azpidomeinuak soilik hartzen ditu. Beste jatorri guztien mezuak baztertu egiten dira.';
+$string['scormtimeout'] = 'Zubiaren itxaronaldia (milisegundo)';
+$string['scormtimeout_help'] = 'Kanpoko pakete batek erantzuteko itxaron beharreko denbora, zubirik ez duela erabaki aurretik.';
+$string['status_externalnobridge'] = 'Orri honen zati bat kanpoko edukia da eta ez du irakurtzen uzten. Orriaren gainerakoa baino ez da irakurriko.';
+$string['status_nocontent'] = 'Ez dago testu irakurgarririk orri honetan.';
+
+// Irakurketa hizkuntza.
+$string['header_voices'] = 'Irakurketa hizkuntza eta ahotsak';
+$string['header_voices_help'] = 'Euskara nabigatzailearen barruan exekutatzen diren itzune ahotsekin sintetizatzen da, atzean aHoTTS APIa duela. Gainerako hizkuntzak nabigatzailearen beraren Web Speech APIarekin irakurtzen dira, eta atzean aHoTTS APIa hizkuntza horretarako konfiguratuta badago.';
+$string['langmode'] = 'Nola erabakitzen den irakurketa hizkuntza';
+$string['langmode_help'] = 'Aukeratu nondik datorren irakurketa hizkuntza. «Irakurleak aukeratu dezala» aukerak hizkuntza menua eransten dio blokeari eta aukera nabigatzailean gordetzen du.';
+$string['langmode_fixed'] = 'Finkoa: goian konfiguratutako hizkuntza';
+$string['langmode_page'] = 'Moodleren interfazearen hizkuntzari jarraitu';
+$string['langmode_content'] = 'Edukiaren lang atributuari jarraitu';
+$string['langmode_chooser'] = 'Irakurleak blokean aukeratu dezala';
+$string['chooserlangs'] = 'Eskainitako hizkuntzak';
+$string['chooserlangs_help'] = 'Irakurleak aukeratu ditzakeen hizkuntzak, «irakurleak aukeratu dezala» eta «lang atributuari jarraitu» moduek erabiltzen dituztenak. Euskarak nabigatzaileko ahotsak edo euskarazko aHoTTS endpoint bat behar du; gainerako hizkuntzek nabigatzailean ahots bateragarria behar dute.';
+$string['languagelabel'] = 'Hizkuntza';
+$string['voicelabel'] = 'Ahotsa';
+
+// Euskarazko ahotsak nabigatzailean (itzuneren Piper modeloak).
+$string['header_piper'] = 'Euskarazko ahotsak nabigatzailean (itzune)';
+$string['header_piper_help'] = 'itzuneren ahotsak (<a href="https://huggingface.co/itzune">huggingface.co/itzune</a>) ONNX formatuko Piper modeloak dira, lokalean exekutatzen direnak ONNX Runtime Web bidez, WebGPU erabiliz edo WebAssembly erabiliz WebGPUrik ez dagoenean. Ez da ezer zerbitzari batera bidaltzen, baina ahotsa (65 MB inguru) eta runtimea behin deskargatzen dira eta nabigatzailearen cachean gelditzen dira. Ezin badira kargatu, blokeak aHoTTS APIra jotzen du.';
+$string['piperenabled'] = 'Erabili itzuneren ahotsak nabigatzailean euskararako';
+$string['piperenabled_help'] = 'Desaktibatuta dagoenean, edo runtimea abiarazi ezin denean, euskara aHoTTS APIarekin sintetizatzen da.';
+$string['pipervoice'] = 'Euskarazko ahots lehenetsia';
+$string['pipervoice_help'] = 'Irakurleak beste bat aukeratzen ez duen bitartean erabiliko den ahotsa.';
+$string['pipervoice_antton'] = 'Antton (gizonezkoa)';
+$string['pipervoice_maider'] = 'Maider (emakumezkoa)';
+$string['pipervoicechooser'] = 'Utzi euskarazko ahotsa aukeratzen';
+$string['pipervoicechooser_help'] = 'Ahots menua eransten dio blokeari euskaraz irakurtzen ari den bitartean.';
+$string['piperbackend'] = 'Exekuzio motorra';
+$string['piperbackend_help'] = 'WebGPU azkarragoa da eskuragarri dagoen lekuan. «Automatikoa» aukerak nabigatzaileak eskaintzen badu erabiltzen du eta bestela WebAssemblyra jotzen du.';
+$string['piperbackend_auto'] = 'Automatikoa (WebGPU eta, bestela, WebAssembly)';
+$string['piperbackend_webgpu'] = 'WebGPU';
+$string['piperbackend_wasm'] = 'WebAssembly';
+$string['pipermodel_antton'] = 'Antton modeloaren URLa';
+$string['pipermodel_maider'] = 'Maider modeloaren URLa';
+$string['pipermodel_help'] = 'Ahotsaren .onnx fitxategiaren URLa. Bere konfigurazioa URL horri berari .json erantsita irakurtzen da. Zerbitzatu zure gunetik hirugarrenen mende ez egoteko eta, domeinu honetan ez badago, ziurtatu erantzunak jatorri arteko irakurketak onartzen dituela.';
+$string['piperort'] = 'ONNX Runtime Web URLa';
+$string['piperort_help'] = 'ONNX Runtime Weben UMD konpilazioaren URLa, adibidez ort.webgpu.min.js.';
+$string['piperwasmpath'] = 'ONNX Runtimeren WebAssembly direktorioa';
+$string['piperwasmpath_help'] = 'Runtimearen .wasm fitxategiak dituen direktorioa, amaierako barrarekin.';
+$string['piperphonemizer'] = 'Fonemizatzailearen URLa';
+$string['piperphonemizer_help'] = 'eSpeak NG fonemizatzailearen ES moduluaren URLa, testua ahotsak espero dituen fonemetan bihurtzen duena.';
+
+// Erreprodukzioaren egoera.
+$string['status_preparingvoice'] = 'Ahotsa prestatzen. Lehen aldian deskargatu egin behar da.';
+$string['status_voicefallback'] = 'Ezin izan da nabigatzaileko ahotsa abiarazi; lineako zerbitzua erabiliko da.';
+$string['status_enginesunavailable'] = 'Ez dago ahotsik eskuragarri hizkuntza honetarako nabigatzaile honetan.';

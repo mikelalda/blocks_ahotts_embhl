@@ -73,13 +73,29 @@ class block_ahotts_embhl extends block_base {
         $listen_text = get_string('listentext', 'block_ahotts_embhl');
         $listen_text_title = get_string('listen_titletext', 'block_ahotts_embhl');
 
-        // Resolve the language bucket. Basque is synthesised by our own aHoTTS API;
-        // Spanish and English are read in the browser with the Web Speech API.
-        $bucket = \block_ahotts_embhl\local\api::language_bucket($this->plugin_config_language);
-        $apiurl = \block_ahotts_embhl\local\api::base_url($this->plugin_config_language);
+        // Work out which languages the Listen button offers, and with which
+        // engine. Basque is spoken by the itzune Piper voices in the browser and
+        // by the aHoTTS API behind them; every other language is spoken by the
+        // browser's own Web Speech API.
+        $langmode = get_config('block_ahotts_embhl', 'langmode') ?: 'fixed';
+        $configuredlang = (string) $this->plugin_config_language;
+        $offered = \block_ahotts_embhl\local\languages::offered();
+        $piperenabled = \block_ahotts_embhl\local\languages::piper_enabled();
 
-        // Basque relies entirely on the API: with no endpoint configured there is nothing to offer.
-        if ($bucket === 'eu' && $apiurl === '') {
+        $defaultlang = \block_ahotts_embhl\local\languages::resolve(
+            $langmode,
+            $configuredlang,
+            current_language(),
+            $offered
+        );
+
+        // Only the modes that let the reading language change at runtime need
+        // more than the resolved one.
+        $codes = in_array($langmode, ['chooser', 'content'], true) ? $offered : [$defaultlang];
+        $languages = \block_ahotts_embhl\local\languages::build($codes, $configuredlang, $piperenabled);
+
+        // No language has an engine that could speak it: offer nothing at all.
+        if (!$languages) {
             return $this->content;
         }
 
@@ -107,79 +123,53 @@ class block_ahotts_embhl extends block_base {
             'pause' => get_string('pausetext', 'block_ahotts_embhl'),
             'resume' => get_string('resumetext', 'block_ahotts_embhl'),
             'stop' => get_string('stoptext', 'block_ahotts_embhl'),
+            'language' => get_string('languagelabel', 'block_ahotts_embhl'),
+            'voice' => get_string('voicelabel', 'block_ahotts_embhl'),
         ];
 
         $jsconfig = [
             'readid' => $this->plugin_config_readid,
             'maxlen' => (int) (get_config('block_ahotts_embhl', 'maxtextlength') ?: 3000),
             'labels' => $labels,
+            'langmode' => $langmode,
+            'lang' => $defaultlang,
+            'languages' => $languages,
         ];
 
-        if ($bucket === 'eu') {
-            // Basque: synthesise through the aHoTTS API and play the returned audio.
-            $jsconfig['prefer'] = 'api';
-            $jsconfig['api'] = [
-                'url' => $apiurl,
-                'language' => 'eu',
-                'voice' => $this->api_voice('eu'),
+        if ($piperenabled) {
+            // Everything the browser needs to run an itzune voice locally.
+            $jsconfig['piper'] = [
+                'voice' => get_config('block_ahotts_embhl', 'pipervoice') ?: 'antton',
+                'chooser' => (bool) get_config('block_ahotts_embhl', 'pipervoicechooser'),
+                'voices' => \block_ahotts_embhl\local\languages::piper_voices(),
+                'backend' => get_config('block_ahotts_embhl', 'piperbackend') ?: 'auto',
+                'orturl' => trim((string) get_config('block_ahotts_embhl', 'piperort')),
+                'wasmpath' => trim((string) get_config('block_ahotts_embhl', 'piperwasmpath')),
+                'phonemizerurl' => trim((string) get_config('block_ahotts_embhl', 'piperphonemizer')),
+                'loaderurl' => (new moodle_url('/blocks/ahotts_embhl/js/esm-bridge.js'))->out(false),
             ];
-        } else {
-            // Spanish / English: read in the browser. When the language is also
-            // supported by the API, expose it as a fallback for unsupported browsers.
-            $jsconfig['prefer'] = 'webspeech';
-            $jsconfig['webspeech'] = [
-                'lang' => $this->to_bcp47($this->plugin_config_language),
-            ];
-            $apilang = substr($this->plugin_config_language, 0, 2);
-            if ($apiurl !== '' && in_array($apilang, ['es', 'gl', 'ca'], true)) {
-                $jsconfig['api'] = [
-                    'url' => $apiurl,
-                    'language' => $apilang,
-                    'voice' => $this->api_voice($apilang),
-                ];
-            }
         }
+
+        // Cross-origin SCORM packages can only be read when they ship the
+        // cooperative bridge and their origin is on the administrator's list.
+        $jsconfig['bridge'] = [
+            'enabled' => \block_ahotts_embhl\local\origins::bridge_enabled(),
+            'origins' => \block_ahotts_embhl\local\origins::configured(),
+            'timeout' => (int) (get_config('block_ahotts_embhl', 'scormtimeout') ?: 2500),
+        ];
+
+        // Messages announced through the block's aria-live status line.
+        $jsconfig['status'] = [
+            'externalnobridge' => get_string('status_externalnobridge', 'block_ahotts_embhl'),
+            'nocontent' => get_string('status_nocontent', 'block_ahotts_embhl'),
+            'preparingvoice' => get_string('status_preparingvoice', 'block_ahotts_embhl'),
+            'voicefallback' => get_string('status_voicefallback', 'block_ahotts_embhl'),
+            'enginesunavailable' => get_string('status_enginesunavailable', 'block_ahotts_embhl'),
+        ];
 
         $this->page->requires->js_call_amd('block_ahotts_embhl/speech', 'init', [$jsconfig]);
 
         return $this->content;
-    }
-
-    /**
-     * Default aHoTTS API voice for a given language code.
-     *
-     * @param string $language Two-letter language code (eu, es, gl, ca).
-     * @return string
-     */
-    private function api_voice($language) {
-        $configured = get_config('block_ahotts_embhl', 'voice_' . $language);
-        if (!empty($configured)) {
-            return $configured;
-        }
-        $defaults = [
-            'eu' => 'antton',
-            'es' => 'laura',
-            'gl' => 'brais',
-            'ca' => 'ona',
-        ];
-        return $defaults[$language] ?? '';
-    }
-
-    /**
-     * Convert a ReadSpeaker/Moodle language code (xx_yy) to a BCP-47 tag (xx-YY).
-     *
-     * @param string $lang
-     * @return string
-     */
-    private function to_bcp47($lang) {
-        if (empty($lang)) {
-            return '';
-        }
-        $parts = explode('_', $lang);
-        if (count($parts) < 2) {
-            return $parts[0];
-        }
-        return $parts[0] . '-' . strtoupper($parts[1]);
     }
 
     public function instance_allow_config() {

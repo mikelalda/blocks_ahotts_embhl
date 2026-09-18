@@ -1,0 +1,13 @@
+{
+  "name": "block-ahotts-embhl-js-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Unit tests for the block_ahotts_embhl front-end: DOM collection, the cooperative SCORM bridge and playback control.",
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  },
+  "devDependencies": {
+    "jsdom": "^24.1.0"
+  }
+}

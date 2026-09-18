@@ -1,0 +1,282 @@
+<?php
+// This file is part of Moodle - http://moodle.org/
+//
+// Moodle is free software: you can redistribute it and/or modify
+// it under the terms of the GNU General Public License as published by
+// the Free Software Foundation, either version 3 of the License, or
+// (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
+
+/**
+ * Languages, engines and voices offered by the Listen button.
+ *
+ * @package    block_ahotts_embhl
+ * @copyright  2026 Ahotts
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+
+namespace block_ahotts_embhl\local;
+
+defined('MOODLE_INTERNAL') || die();
+
+/**
+ * Builds the language and engine configuration handed to amd/src/speech.js.
+ *
+ * Basque is spoken by the itzune Piper voices running in the browser, with the
+ * aHoTTS API behind them; every other language is spoken by the browser's Web
+ * Speech API, with the API behind it when one is configured.
+ */
+class languages {
+
+    /** @var string[] Languages the Listen button knows how to offer. */
+    const SUPPORTED = ['eu', 'es', 'en', 'fr', 'ca', 'gl', 'de', 'it', 'pt'];
+
+    /** @var string[] Languages offered when the administrator has chosen none. */
+    const DEFAULT_OFFERED = ['eu', 'es', 'en'];
+
+    /** @var array Region used for a language when the setting does not name one. */
+    const DEFAULT_REGIONS = [
+        'eu' => 'eu-ES',
+        'es' => 'es-ES',
+        'en' => 'en-GB',
+        'fr' => 'fr-FR',
+        'ca' => 'ca-ES',
+        'gl' => 'gl-ES',
+        'de' => 'de-DE',
+        'it' => 'it-IT',
+        'pt' => 'pt-PT',
+    ];
+
+    /** @var array Default aHoTTS voice per language. */
+    const DEFAULT_API_VOICES = [
+        'eu' => 'antton',
+        'es' => 'laura',
+        'gl' => 'brais',
+        'ca' => 'ona',
+    ];
+
+    /** @var array The itzune Piper voices, and where they are published. */
+    const PIPER_VOICES = [
+        'antton' => 'https://huggingface.co/itzune/antton-tts/resolve/main/eu-antton-medium.onnx',
+        'maider' => 'https://huggingface.co/itzune/maider-tts/resolve/main/eu-maider-medium.onnx',
+    ];
+
+    /**
+     * Reduce any language tag to its base code.
+     *
+     * @param string $value For example eu_ES, eu-ES or EU.
+     * @return string For example eu.
+     */
+    public static function normalise(string $value): string {
+        $value = strtolower(trim(str_replace('_', '-', $value)));
+        $parts = explode('-', $value);
+        return $parts[0];
+    }
+
+    /**
+     * The BCP-47 tag the Web Speech API should be asked for.
+     *
+     * The tag configured for the site wins for its own language, so a site set
+     * to Mexican Spanish keeps es-MX; other languages fall back to the region in
+     * DEFAULT_REGIONS.
+     *
+     * @param string $code Base language code.
+     * @param string $configured The full setting value, e.g. es_mx.
+     * @return string
+     */
+    public static function bcp47(string $code, string $configured = ''): string {
+        $code = self::normalise($code);
+        $parts = explode('-', strtolower(str_replace('_', '-', trim($configured))));
+
+        if (count($parts) > 1 && $parts[0] === $code && $parts[1] !== '') {
+            return $code . '-' . strtoupper($parts[1]);
+        }
+
+        return self::DEFAULT_REGIONS[$code] ?? $code;
+    }
+
+    /**
+     * Default aHoTTS voice for a language.
+     *
+     * @param string $code
+     * @return string
+     */
+    public static function api_voice(string $code): string {
+        $code = self::normalise($code);
+        $configured = get_config('block_ahotts_embhl', 'voice_' . $code);
+        if (!empty($configured)) {
+            return (string) $configured;
+        }
+        return self::DEFAULT_API_VOICES[$code] ?? '';
+    }
+
+    /**
+     * Languages the reader may be offered, in the administrator's order.
+     *
+     * @param string|null $raw Raw value of the chooserlangs setting.
+     * @return string[]
+     */
+    public static function offered(?string $raw = null): array {
+        if ($raw === null) {
+            $raw = (string) get_config('block_ahotts_embhl', 'chooserlangs');
+        }
+
+        $codes = [];
+        foreach (preg_split('/[\s,]+/', $raw, -1, PREG_SPLIT_NO_EMPTY) ?: [] as $entry) {
+            $code = self::normalise($entry);
+            if (in_array($code, self::SUPPORTED, true) && !in_array($code, $codes, true)) {
+                $codes[] = $code;
+            }
+        }
+
+        return $codes ?: self::DEFAULT_OFFERED;
+    }
+
+    /**
+     * Resolve which language the page should be read in by default.
+     *
+     * 'content' and 'chooser' are settled in the browser, so they only need a
+     * sensible starting point here.
+     *
+     * @param string $langmode fixed, page, content or chooser.
+     * @param string $configured The plugin or block language setting.
+     * @param string $current The Moodle interface language.
+     * @param string[] $offered Languages that can actually be offered.
+     * @return string
+     */
+    public static function resolve(string $langmode, string $configured, string $current, array $offered): string {
+        if (!$offered) {
+            return '';
+        }
+
+        if ($langmode === 'page') {
+            $code = self::normalise($current);
+            if (in_array($code, $offered, true)) {
+                return $code;
+            }
+        }
+
+        $code = self::normalise($configured);
+        if (in_array($code, $offered, true)) {
+            return $code;
+        }
+
+        return $offered[0];
+    }
+
+    /**
+     * The Piper voices available in the browser, with their model URLs.
+     *
+     * @return array[] [{id, label, modelurl, language}]
+     */
+    public static function piper_voices(): array {
+        $voices = [];
+
+        foreach (self::PIPER_VOICES as $id => $default) {
+            $url = trim((string) get_config('block_ahotts_embhl', 'pipermodel_' . $id));
+            if ($url === '') {
+                $url = $default;
+            }
+            $voices[] = [
+                'id' => $id,
+                'label' => get_string('pipervoice_' . $id, 'block_ahotts_embhl'),
+                'modelurl' => $url,
+                'language' => 'eu',
+            ];
+        }
+
+        return $voices;
+    }
+
+    /**
+     * Whether the in-browser Basque voices are switched on and usable.
+     *
+     * @return bool
+     */
+    public static function piper_enabled(): bool {
+        if (!get_config('block_ahotts_embhl', 'piperenabled')) {
+            return false;
+        }
+        $required = ['piperort', 'piperphonemizer'];
+        foreach ($required as $name) {
+            if (trim((string) get_config('block_ahotts_embhl', $name)) === '') {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /**
+     * The engines that can speak a language, best first.
+     *
+     * @param string $code Base language code.
+     * @param bool $piperenabled
+     * @return array[]
+     */
+    public static function engines_for(string $code, bool $piperenabled): array {
+        $code = self::normalise($code);
+        $engines = [];
+
+        // Basque: the local itzune voice first, the aHoTTS service behind it.
+        if ($code === 'eu' && $piperenabled) {
+            $engines[] = ['kind' => 'piper'];
+        }
+
+        // Everything else is read by the browser itself.
+        if ($code !== 'eu') {
+            $engines[] = ['kind' => 'webspeech'];
+        }
+
+        $apiurl = api::base_url($code);
+        if ($apiurl !== '') {
+            $engines[] = [
+                'kind' => 'api',
+                'url' => $apiurl,
+                'language' => $code,
+                'voice' => self::api_voice($code),
+            ];
+        }
+
+        // Basque deliberately gets no Web Speech fallback: browsers ship no
+        // Basque voice, and reading it with a Spanish one is worse than not
+        // offering the button at all.
+
+        return $engines;
+    }
+
+    /**
+     * Build the whole language list handed to the front end.
+     *
+     * @param string[] $codes
+     * @param string $configured The plugin or block language setting.
+     * @param bool $piperenabled
+     * @return array[]
+     */
+    public static function build(array $codes, string $configured, bool $piperenabled): array {
+        $names = get_string_manager()->get_list_of_languages();
+        $out = [];
+
+        foreach ($codes as $code) {
+            $code = self::normalise($code);
+            $engines = self::engines_for($code, $piperenabled);
+            if (!$engines) {
+                continue;
+            }
+            $out[] = [
+                'code' => $code,
+                'label' => $names[$code] ?? strtoupper($code),
+                'bcp47' => self::bcp47($code, $configured),
+                'engines' => $engines,
+            ];
+        }
+
+        return $out;
+    }
+}

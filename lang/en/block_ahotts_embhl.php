@@ -216,3 +216,59 @@ $string['mobileapp_help'] = "Check to enable the plugin in the Moodle app (also 
 // Mobile toolbar.
 $string['pixels'] = 'Mobile toolbar position';
 $string['pixels_help'] = 'Specify how many pixels from the bottom of the screen the mobile toolbar should be placed (example "130").';
+// Cross-origin SCORM bridge.
+$string['header_scorm'] = 'SCORM and external content';
+$string['header_scorm_help'] = 'Content inside an iframe served from another domain cannot be read by the browser: the Same-Origin Policy forbids it. Such a package can only be read when it ships the cooperative bridge (bridge/ahotts-scorm-bridge.js) and its origin is listed below. SCORM packages served by this Moodle site are read directly and need no configuration.';
+$string['scormbridge'] = 'Enable the cross-origin SCORM bridge';
+$string['scormbridge_help'] = 'Allow the Listen button to ask external SCORM packages for their text through the cooperative postMessage bridge. It has no effect until at least one origin is listed below.';
+$string['scormorigins'] = 'Allowed SCORM origins';
+$string['scormorigins_help'] = 'One origin per line, as scheme, host and optional port with no path, for example <code>https://scorm.example.org</code> or <code>https://learning.example.org:8443</code>. A single leading wildcard label is accepted (<code>https://*.example.org</code>) and matches sub-domains only. Messages from any other origin are ignored. Entries that are not well formed origins are discarded.';
+$string['scormtimeout'] = 'Bridge timeout (milliseconds)';
+$string['scormtimeout_help'] = 'How long to wait for an external package to answer before treating it as having no bridge.';
+$string['status_externalnobridge'] = 'Part of this page is external content that does not allow reading. Only the rest of the page will be read aloud.';
+$string['status_nocontent'] = 'There is no readable text on this page.';
+
+// Reading language.
+$string['header_voices'] = 'Reading language and voices';
+$string['header_voices_help'] = 'Basque is spoken by the itzune voices running inside the browser, with the aHoTTS API behind them. Every other language is spoken by the browser\'s own Web Speech API, with the aHoTTS API behind it when one is configured for that language.';
+$string['langmode'] = 'How the reading language is decided';
+$string['langmode_help'] = 'Choose where the reading language comes from. "Let the reader choose" adds a language menu to the block and remembers the choice in the browser.';
+$string['langmode_fixed'] = 'Fixed: the language configured above';
+$string['langmode_page'] = 'Follow the Moodle interface language';
+$string['langmode_content'] = 'Follow the lang attribute of the content';
+$string['langmode_chooser'] = 'Let the reader choose in the block';
+$string['chooserlangs'] = 'Languages offered';
+$string['chooserlangs_help'] = 'Languages the reader may pick from, used by the "let the reader choose" and "follow the lang attribute" modes. Basque needs either the in-browser voices or a Basque aHoTTS endpoint; the other languages need a matching voice in the reader\'s browser.';
+$string['languagelabel'] = 'Language';
+$string['voicelabel'] = 'Voice';
+
+// In-browser Basque voices (itzune Piper models).
+$string['header_piper'] = 'Basque voices in the browser (itzune)';
+$string['header_piper_help'] = 'The itzune voices (<a href="https://huggingface.co/itzune">huggingface.co/itzune</a>) are Piper models in ONNX format, run locally by ONNX Runtime Web on WebGPU, or on WebAssembly when WebGPU is not available. Nothing is sent to a server, but the voice (around 65 MB) and the runtime are downloaded once and then kept in the browser cache. If they cannot be loaded, the block falls back to the aHoTTS API.';
+$string['piperenabled'] = 'Use the itzune voices in the browser for Basque';
+$string['piperenabled_help'] = 'When this is off, or when the runtime cannot start, Basque is synthesised by the aHoTTS API instead.';
+$string['pipervoice'] = 'Default Basque voice';
+$string['pipervoice_help'] = 'Voice used unless the reader picks another one.';
+$string['pipervoice_antton'] = 'Antton (male)';
+$string['pipervoice_maider'] = 'Maider (female)';
+$string['pipervoicechooser'] = 'Let the reader choose the Basque voice';
+$string['pipervoicechooser_help'] = 'Adds a voice menu to the block while Basque is being read.';
+$string['piperbackend'] = 'Execution backend';
+$string['piperbackend_help'] = 'WebGPU is faster where it is available. "Automatic" uses it when the browser offers it and falls back to WebAssembly otherwise.';
+$string['piperbackend_auto'] = 'Automatic (WebGPU, then WebAssembly)';
+$string['piperbackend_webgpu'] = 'WebGPU';
+$string['piperbackend_wasm'] = 'WebAssembly';
+$string['pipermodel_antton'] = 'Antton model URL';
+$string['pipermodel_maider'] = 'Maider model URL';
+$string['pipermodel_help'] = 'URL of the .onnx voice. Its configuration is read from the same URL with .json appended. Serve it from your own site to avoid depending on a third party, and make sure the response allows cross-origin reads if it is not on this domain.';
+$string['piperort'] = 'ONNX Runtime Web URL';
+$string['piperort_help'] = 'URL of the ONNX Runtime Web build (the UMD one, for example ort.webgpu.min.js).';
+$string['piperwasmpath'] = 'ONNX Runtime WebAssembly directory';
+$string['piperwasmpath_help'] = 'Directory holding the runtime\'s .wasm files, with a trailing slash.';
+$string['piperphonemizer'] = 'Phonemizer URL';
+$string['piperphonemizer_help'] = 'URL of the eSpeak NG phonemizer ES module, which turns text into the phonemes the voice expects.';
+
+// Playback status.
+$string['status_preparingvoice'] = 'Preparing the voice. The first time, this downloads it.';
+$string['status_voicefallback'] = 'The voice in the browser could not be started; using the online service instead.';
+$string['status_enginesunavailable'] = 'No voice is available for this language in this browser.';
