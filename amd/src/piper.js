@@ -56,6 +56,11 @@ const ESPEAK_OUTPUT = 'phonemes';
 // in use really carries the voice's language.
 const LANGUAGE_PROBE = 'kaixo';
 
+// Piper receives each eSpeak clause separately. Leave a short silence between
+// them so punctuation such as a comma is audible instead of being flattened
+// into an ordinary space.
+const CLAUSE_PAUSE_SECONDS = 0.18;
+
 /**
  * Turn a string of IPA phonemes into the id sequence a Piper model expects.
  *
@@ -461,30 +466,55 @@ export const createPiperEngine = (config, deps) => {
      */
     const synthesise = async (text) => {
         const phonemes = await phonemize(text, voiceLanguage());
-        const joined = Array.isArray(phonemes) ? phonemes.join(' ') : String(phonemes);
-        const ids = phonemesToIds(joined, voice.phoneme_id_map);
-        if (ids.length <= 3) {
+        const clauses = (Array.isArray(phonemes) ? phonemes : [phonemes])
+            .map((clause) => String(clause || '').trim())
+            .filter(Boolean);
+        if (!clauses.length) {
             throw new Error('Nothing to synthesise');
         }
 
         const inference = voice.inference || {};
-        const feeds = {
-            input: new ort.Tensor('int64', BigInt64Array.from(ids, (id) => BigInt(id)), [1, ids.length]),
-            input_lengths: new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)])),
-            scales: new ort.Tensor('float32', Float32Array.from([
-                typeof inference.noise_scale === 'number' ? inference.noise_scale : 0.667,
-                typeof inference.length_scale === 'number' ? inference.length_scale : 1,
-                typeof inference.noise_w === 'number' ? inference.noise_w : 0.8,
-            ])),
-        };
-        if (voice.speaker_id_map && Object.keys(voice.speaker_id_map).length) {
-            feeds.sid = new ort.Tensor('int64', BigInt64Array.from([BigInt(config.speaker || 0)]));
+        const samplerate = (voice.audio && voice.audio.sample_rate) || 22050;
+        const pause = new Float32Array(Math.round(samplerate * CLAUSE_PAUSE_SECONDS));
+        const waveforms = [];
+
+        for (let i = 0; i < clauses.length; i++) {
+            const ids = phonemesToIds(clauses[i], voice.phoneme_id_map);
+            if (ids.length <= 3) {
+                continue;
+            }
+            const feeds = {
+                input: new ort.Tensor('int64', BigInt64Array.from(ids, (id) => BigInt(id)), [1, ids.length]),
+                input_lengths: new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)])),
+                scales: new ort.Tensor('float32', Float32Array.from([
+                    typeof inference.noise_scale === 'number' ? inference.noise_scale : 0.667,
+                    typeof inference.length_scale === 'number' ? inference.length_scale : 1,
+                    typeof inference.noise_w === 'number' ? inference.noise_w : 0.8,
+                ])),
+            };
+            if (voice.speaker_id_map && Object.keys(voice.speaker_id_map).length) {
+                feeds.sid = new ort.Tensor('int64', BigInt64Array.from([BigInt(config.speaker || 0)]));
+            }
+
+            const results = await session.run(feeds);
+            const output = results.output || results[Object.keys(results)[0]];
+            if (waveforms.length) {
+                waveforms.push(pause);
+            }
+            waveforms.push(output.data);
         }
 
-        const results = await session.run(feeds);
-        const output = results.output || results[Object.keys(results)[0]];
-        const samplerate = (voice.audio && voice.audio.sample_rate) || 22050;
-        return URL.createObjectURL(encodeWav(output.data, samplerate));
+        if (!waveforms.length) {
+            throw new Error('Nothing to synthesise');
+        }
+        const length = waveforms.reduce((total, samples) => total + samples.length, 0);
+        const combined = new Float32Array(length);
+        let offset = 0;
+        waveforms.forEach((samples) => {
+            combined.set(samples, offset);
+            offset += samples.length;
+        });
+        return URL.createObjectURL(encodeWav(combined, samplerate));
     };
 
     return {

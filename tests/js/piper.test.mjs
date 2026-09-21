@@ -115,7 +115,8 @@ const makeEngine = (options = {}) => {
                 if (options.phonemizerFailsOn === language) {
                     return Promise.reject(new Error('eSpeak NG cannot speak "' + language + '"'));
                 }
-                return Promise.resolve([options.phonemes === undefined ? 'abiˈaɾ' : options.phonemes]);
+                const phonemes = options.phonemes === undefined ? 'abiˈaɾ' : options.phonemes;
+                return Promise.resolve(Array.isArray(phonemes) ? phonemes : [phonemes]);
             },
         }),
         fetchJson: () => Promise.resolve(options.voice || VOICE),
@@ -234,6 +235,19 @@ test('feeds the model the phoneme ids, the length and the inference scales', asy
     // The scales travel as float32, so compare them at that precision.
     assert.deepEqual([...feeds.scales.data], [...Float32Array.from([0.667, 1, 0.8])]);
     assert.equal(feeds.sid, undefined, 'a single speaker voice needs no speaker id');
+});
+
+test('keeps a short silence between clauses produced for a comma', async () => {
+    const ctx = makeEngine({phonemes: ['ab', 'ba']});
+    await ctx.engine.warmup();
+    await ctx.engine.prepare('Kaixo, lagun');
+
+    assert.equal(ctx.calls.runs, 2, 'each side of the comma is synthesised as its own clause');
+    const view = await readBlob(ctx.window, ctx.window.__lastBlob);
+    const pausesamples = Math.round(VOICE.audio.sample_rate * 0.18);
+    assert.equal(view.getUint32(40, true), (8 + pausesamples) * 2, 'the WAV contains both clauses and the pause');
+    assert.equal(view.getInt16(44 + (4 * 2), true), 0, 'the inserted pause is silent');
+    assert.equal(view.getInt16(44 + ((4 + pausesamples + 1) * 2), true), 16383, 'audio resumes after the pause');
 });
 
 test('passes a speaker id for a multi speaker voice', async () => {
