@@ -9,8 +9,12 @@ chunk by chunk, with the text currently being spoken underlined.
   WebAssembly where WebGPU is not available. No text leaves the learner's
   machine. If the voice cannot be started, the block falls back to the **aHoTTS
   API** configured in the settings.
-* **Every other language** is spoken by the browser's own **Web Speech API**,
-  with the aHoTTS API behind it when one is configured for that language.
+* **Spanish (es) and English (en)** also have local Piper voices (Davefx; Alba
+  and Ryan), with the browser's **Web Speech API** and the aHoTTS API behind
+  them.
+* **Every other language** (fr, ca, gl, de, it, pt) is spoken by the browser's
+  own Web Speech API, with the aHoTTS API behind it when one is configured for
+  that language.
 
 The next chunk is synthesised while the current one plays, so playback starts
 almost immediately.
@@ -23,6 +27,28 @@ prefer.
 Besides the page itself, the block reads **content inside iframes**: SCORM
 packages, H5P activities and anything else embedded in the reading region,
 including iframes nested inside iframes.
+
+Per-course deployment
+---------------------
+
+A block added to a course is shown on every page of that course, activities
+included (`pagetypepattern=*`, shown in sub-contexts). To add it to many
+courses at once, `cli/provision_courses.php` creates or widens one instance per
+course and, optionally, sets SCORM activities to open in the current window so
+the block can read them. It only simulates unless `--apply` is given:
+
+```bash
+php blocks/ahotts_embhl/cli/provision_courses.php --courseid=261 --language=eu --scorm-current-window --dry-run
+php blocks/ahotts_embhl/cli/provision_courses.php --all --scorm-current-window --apply
+```
+
+The language of each course comes, in order, from `--language`,
+`--language-map`, `course.lang`, and finally an offline lexical detection
+(Spanish, Basque, English) over the course name, summary and section, page and
+SCORM titles. Ambiguous courses are skipped and reported, never guessed.
+Existing instances, exceptions and inherited blocks are never deleted. See
+[cli/USAGE.txt](cli/USAGE.txt) for the full procedure, and
+`cli/test_course_language.php` for the detection tests, which need no database.
 
 Downloading audio for offline listening
 --------------------------------------
@@ -45,7 +71,9 @@ errors do not produce a partial file. Long exports take time and browser memory.
 Requirements
 ------------
 
-Moodle 3.0 or later. A modern browser. For Basque, a reachable aHoTTS endpoint.
+Moodle 3.0 or later. A modern browser. The local voices need no endpoint; an
+aHoTTS endpoint is only needed as a fallback or for languages without a local
+voice.
 
 Installation
 ------------
@@ -69,10 +97,10 @@ Settings
 | How the reading language is decided | `fixed`, `page`, `content` or `chooser`; see below. |
 | Languages offered | Languages the reader may pick from. |
 | Use the itzune voices in the browser | Turns on local Basque synthesis. |
-| Default Basque voice | `antton` or `maider`. |
-| Let the reader choose the Basque voice | Adds a voice menu to the block. |
+| Default voice per language | Basque `antton` or `maider`, Spanish `davefx`, English `alba` or `ryan`. |
+| Let the reader choose the voice | Adds a voice menu to the block. |
 | Execution backend | `auto`, `webgpu` or `wasm`. |
-| Antton / Maider model URL | Where the `.onnx` voice is fetched from. |
+| Model URL of each voice | Where the `.onnx` voice is fetched from. |
 | ONNX Runtime Web URL, WebAssembly directory, Phonemizer URL | Where the runtime is fetched from. |
 | Enable the cross-origin SCORM bridge | Turns on the cooperative bridge client. |
 | Allowed SCORM origins | Origins allowed to answer the bridge, one per line. |
@@ -103,7 +131,10 @@ Basque voices in the browser
 The voices come from [huggingface.co/itzune](https://huggingface.co/itzune):
 [`itzune/antton-tts`](https://huggingface.co/itzune/antton-tts) (male) and
 [`itzune/maider-tts`](https://huggingface.co/itzune/maider-tts) (female), both
-Piper/VITS models exported to ONNX and published under Apache-2.0.
+Piper/VITS models exported to ONNX and published under Apache-2.0. The Spanish
+(`davefx`) and English (`alba`, `ryan`) voices come from
+[`rhasspy/piper-voices`](https://huggingface.co/rhasspy/piper-voices) and run
+through the same pipeline.
 
 The pipeline runs entirely in the page:
 
@@ -135,13 +166,17 @@ site, then point the settings at your copies:
 | What | Where it comes from | Licence |
 |---|---|---|
 | `ort.webgpu.min.js` and `ort-wasm-simd-threaded.jsep.wasm` | [`onnxruntime-web`](https://www.npmjs.com/package/onnxruntime-web) | MIT |
-| `phonemizer.js` | [`phonemizer`](https://www.npmjs.com/package/phonemizer) (wraps eSpeak NG) | Apache-2.0, eSpeak NG is GPL-3.0 |
+| `espeak-ng.js` and `espeak-ng.wasm` (default phonemizer, all languages) | [`espeak-ng`](https://www.npmjs.com/package/espeak-ng) | GPL-3.0 |
 | `eu-antton-medium.onnx` and its `.json` | `itzune/antton-tts` | Apache-2.0 |
 | `eu-maider-medium.onnx` and its `.json` | `itzune/maider-tts` | Apache-2.0 |
+| Spanish and English `.onnx` voices and their `.json` | `rhasspy/piper-voices` | Per voice; check each model card |
 
 The voice configuration is read from the model URL with `.json` appended, which
 is the Piper convention and matches how the files are published. If you serve
 them from another domain, that domain has to allow cross-origin reads.
+
+The phonemizer has to be a full eSpeak NG build: the `phonemizer` npm package
+only carries English, and with it the Basque voices produce no sound.
 
 The block loads the runtime with an ordinary `<script>` tag and the phonemizer
 through `js/esm-bridge.js`, a small ES module shipped with the plugin. Neither
@@ -189,7 +224,8 @@ Consequently there are two cases:
 | Language | First choice | Fallback | If nothing works |
 |---|---|---|---|
 | Basque | itzune voice in the browser (WebGPU, else WebAssembly) | aHoTTS API | The language is not offered; the button says so. |
-| Spanish, English, French, Catalan, Galician, German, Italian, Portuguese | Browser Web Speech API | aHoTTS API when configured for that language | The button says no voice is available. |
+| Spanish, English | Piper voice in the browser | Browser Web Speech API, then aHoTTS API | The button says no voice is available. |
+| French, Catalan, Galician, German, Italian, Portuguese | Browser Web Speech API | aHoTTS API when configured for that language | The button says no voice is available. |
 
 Basque is deliberately never handed to a browser voice: browsers ship none, and
 reading Basque with a Spanish voice is worse than not offering the button.
@@ -295,6 +331,12 @@ JavaScript (jsdom, no Moodle needed):
 cd blocks/ahotts_embhl/tests/js
 npm install
 npm test
+```
+
+Course language detection (no database needed):
+
+```bash
+php blocks/ahotts_embhl/cli/test_course_language.php
 ```
 
 The JavaScript suite covers an ordinary Moodle page, a same-origin SCORM package,
