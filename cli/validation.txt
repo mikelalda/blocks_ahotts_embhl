@@ -1,0 +1,39 @@
+PASS: --help; exit=0
+PASS: (sin argumentos); exit=1
+PASS: --all --courseid=261; exit=1
+PASS: --courseid=-1; exit=1
+PASS: --all --apply --dry-run; exit=1
+PASS: --courseid=261 --dry-run; exit=1
+No syntax errors detected in blocks/ahotts_embhl/cli/provision_courses.php
+
+DRY RUN REAL SOLICITADO: curso 261
+Comando: php blocks/ahotts_embhl/cli/provision_courses.php --courseid=261 --dry-run
+Resultado: BLOQUEADO antes de conectar a la base de datos.
+Motivo: config.php no es legible por el usuario de ejecución.
+No se han creado ni actualizado bloques. No se ha validado el plan del curso 261.
+También se intentó sudo -n -u www-data: requiere contraseña.
+
+AMPLIACIÓN: idioma explícito y SCORM en ventana actual
+PASS: php -l provision_courses.php.
+PASS: --language=eu se acepta para --courseid; se rechaza con --all.
+PASS: idiomas no admitidos o sin valor se rechazan antes de conectar.
+PASS (entorno simulado): dry run planifica bloque y SCORM sin escrituras.
+PASS (entorno simulado): apply crea bloque heredado y cambia popup a 0,
+conservando los demás campos SCORM e invalidando la caché del curso.
+PASS (entorno simulado): bloque coincidente no se duplica; sin la opción
+--scorm-current-window los SCORM permanecen intactos.
+PASS (entorno simulado): un bloque omitido por idioma no impide actualizar
+los SCORM solicitados; salida 2 informa de cursos pendientes.
+El dry run real con --courseid=261 --language=eu --scorm-current-window
+sigue bloqueado en este entorno por acceso a config.php.
+No se ha aplicado ningún cambio a la base de datos real desde esta sesión.
+
+DETECCIÓN AUTOMÁTICA
+PASS: sintaxis PHP del detector y del script.
+PASS: 12 regresiones en cli/test_course_language.php (incluye el título
+real del curso 724, títulos SCORM facilitados, euskera, inglés, textos
+bilingües, evidencia ambigua y duplicados).
+PASS: 6 pruebas del flujo CLI con servicios Moodle simulados, incluida
+creación automática en es_es con course.lang vacío y prioridad de --language.
+Intento real: --courseid=724 --dry-run, bloqueado antes de conectar por
+falta de lectura de config.php. No se han aplicado cambios reales aquí.

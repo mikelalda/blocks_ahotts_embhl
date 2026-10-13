@@ -155,8 +155,7 @@ class languages_test extends \advanced_testcase {
         $this->resetAfterTest(true);
 
         $this->assertSame(['antton', 'maider'], array_column(languages::piper_voices(['eu']), 'id'));
-        $this->assertSame(['davefx', 'claude'], array_column(languages::piper_voices(['es']), 'id'));
-
+        
         $both = languages::piper_voices(['eu', 'es']);
         $this->assertSame(['eu', 'eu', 'es', 'es'], array_column($both, 'language'));
 

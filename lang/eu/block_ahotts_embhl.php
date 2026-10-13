@@ -73,7 +73,6 @@ $string['pipervoice_help'] = 'Irakurleak beste bat aukeratzen ez duen bitartean 
 $string['pipervoice_antton'] = 'Antton (euskara, gizonezkoa)';
 $string['pipervoice_maider'] = 'Maider (euskara, emakumezkoa)';
 $string['pipervoice_davefx'] = 'Davefx (Espainiako gaztelania, gizonezkoa)';
-$string['pipervoice_claude'] = 'Claude (Mexikoko gaztelania, emakumezkoa)';
 $string['pipervoice_alba'] = 'Alba (ingeles britainiarra, emakumezkoa)';
 $string['pipervoice_ryan'] = 'Ryan (ingeles amerikarra, gizonezkoa)';
 $string['pipervoicelang_eu'] = 'Euskarazko';
@@ -101,3 +100,12 @@ $string['piperphonemizerwasm_help'] = 'Fonemizatzailearen .wasm fitxategiaren UR
 $string['status_preparingvoice'] = 'Ahotsa prestatzen. Lehen aldian deskargatu egin behar da.';
 $string['status_voicefallback'] = 'Ezin izan da nabigatzaileko ahotsa abiarazi; lineako zerbitzua erabiliko da.';
 $string['status_enginesunavailable'] = 'Ez dago ahotsik eskuragarri hizkuntza honetarako nabigatzaile honetan.';
+
+// Offline audio download.
+$string['downloadaudio'] = 'Deskargatu audioa';
+$string['saveaudio'] = 'Gorde audioa (WAV)';
+$string['status_downloadunavailable'] = 'Audioa deskargatzeko, tokiko ahots bat edo hizkuntza honetarako konfiguratutako audio API bat behar da. Nabigatzailearen ahotsa ezin da esportatu.';
+$string['status_downloadprogress'] = 'Audioa prestatzen: {current}. zatia, guztira {total}.';
+$string['status_downloadready'] = 'Audioa prest dago. Gorde WAV fitxategia konexiorik gabe entzuteko.';
+$string['status_downloaderror'] = 'Ezin izan da audio osoa sortu. Saiatu berriro.';
+$string['status_downloadcancelled'] = 'Audioaren deskarga bertan behera utzi da.';

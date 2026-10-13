@@ -24,6 +24,24 @@ Besides the page itself, the block reads **content inside iframes**: SCORM
 packages, H5P activities and anything else embedded in the reading region,
 including iframes nested inside iframes.
 
+Downloading audio for offline listening
+--------------------------------------
+
+**Download audio** generates a single mono PCM WAV containing all the readable
+text currently received by the block, in reading order, using the selected
+language and local voice (or the configured aHoTTS API). It shows progress and
+can be cancelled with **Stop**. The file downloads automatically where allowed;
+**Save audio (WAV)** also remains available for an explicit save. Once saved,
+the learner can listen without opening Moodle or connecting to the internet.
+
+Export skips Web Speech because browser speech does not expose audio data.
+Languages that only have Web Speech need a local Piper voice or a configured
+API before they can be downloaded. Generation needs access to any uncached
+voice/runtime files or the API. The playback character cap does not truncate
+exports. External content that cannot be collected is announced as usual;
+hidden pages of a SCORM package are not part of the received text. Generation
+errors do not produce a partial file. Long exports take time and browser memory.
+
 Requirements
 ------------
 
