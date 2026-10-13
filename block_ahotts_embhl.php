@@ -125,6 +125,8 @@ class block_ahotts_embhl extends block_base {
             'stop' => get_string('stoptext', 'block_ahotts_embhl'),
             'language' => get_string('languagelabel', 'block_ahotts_embhl'),
             'voice' => get_string('voicelabel', 'block_ahotts_embhl'),
+            'download' => get_string('downloadaudio', 'block_ahotts_embhl'),
+            'saveaudio' => get_string('saveaudio', 'block_ahotts_embhl'),
         ];
 
         $jsconfig = [
@@ -165,6 +167,11 @@ class block_ahotts_embhl extends block_base {
             'nocontent' => get_string('status_nocontent', 'block_ahotts_embhl'),
             'preparingvoice' => get_string('status_preparingvoice', 'block_ahotts_embhl'),
             'voicefallback' => get_string('status_voicefallback', 'block_ahotts_embhl'),
+            'downloadunavailable' => get_string('status_downloadunavailable', 'block_ahotts_embhl'),
+            'downloadprogress' => get_string('status_downloadprogress', 'block_ahotts_embhl'),
+            'downloadready' => get_string('status_downloadready', 'block_ahotts_embhl'),
+            'downloaderror' => get_string('status_downloaderror', 'block_ahotts_embhl'),
+            'downloadcancelled' => get_string('status_downloadcancelled', 'block_ahotts_embhl'),
             'enginesunavailable' => get_string('status_enginesunavailable', 'block_ahotts_embhl'),
         ];
 
@@ -183,6 +190,32 @@ class block_ahotts_embhl extends block_base {
 
     public function instance_allow_multiple() {
         return false;
+    }
+
+    /**
+     * A block added to a course is shown on every page of that course, including all its activities.
+     *
+     * @return bool
+     */
+    public function instance_create() {
+        global $DB;
+
+        $context = context::instance_by_id($this->instance->parentcontextid, IGNORE_MISSING);
+        if (!$context || $context->contextlevel != CONTEXT_COURSE) {
+            return true;
+        }
+
+        $DB->update_record('block_instances', (object) [
+            'id' => $this->instance->id,
+            'pagetypepattern' => '*',
+            'subpagepattern' => null,
+            'showinsubcontexts' => 1,
+        ]);
+        $this->instance->pagetypepattern = '*';
+        $this->instance->subpagepattern = null;
+        $this->instance->showinsubcontexts = 1;
+
+        return true;
     }
 
     public function applicable_formats() {

@@ -36,7 +36,6 @@ const PIPER = {
         {id: 'antton', label: 'Antton', modelurl: 'https://models.example.org/antton.onnx', language: 'eu'},
         {id: 'maider', label: 'Maider', modelurl: 'https://models.example.org/maider.onnx', language: 'eu'},
         {id: 'davefx', label: 'Davefx', modelurl: 'https://models.example.org/davefx.onnx', language: 'es'},
-        {id: 'claude', label: 'Claude', modelurl: 'https://models.example.org/claude.onnx', language: 'es'},
     ],
 };
 
@@ -375,7 +374,7 @@ test('the voice menu offers the voices of the language being read', () => {
     languageSelect.value = 'es';
     languageSelect.dispatchEvent(new ctx.window.Event('change'));
 
-    assert.deepEqual([...voiceSelect.options].map((option) => option.value), ['davefx', 'claude']);
+    assert.deepEqual([...voiceSelect.options].map((option) => option.value), ['davefx']);
     assert.equal(voiceSelect.value, 'davefx', 'and the default voice of that language is chosen');
 });
 

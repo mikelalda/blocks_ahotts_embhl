@@ -44,7 +44,7 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-import {createPiperEngine} from './piper';
+import {createPiperEngine, encodeWav} from './piper';
 
 const STATE_IDLE = 'idle';
 const STATE_PLAYING = 'playing';
@@ -1028,6 +1028,8 @@ export const init = (config) => {
     };
 
     let activeEngine = null;
+    let downloading = false;
+    let downloadUrl = null;
 
     let state = STATE_IDLE;
     let stopped = false;
@@ -1086,12 +1088,14 @@ export const init = (config) => {
      * cannot be started.
      *
      * @param {Object} entry
+     * @param {Boolean} downloadable Only engines that produce audio files.
      * @return {Promise<Object|null>}
      */
     let engineNotice = '';
-    const resolveEngine = async (entry) => {
+    const resolveEngine = async (entry, downloadable = false) => {
         engineNotice = '';
-        const specs = (entry.engines || []).filter((spec) => couldRun(spec, entry));
+        const specs = (entry.engines || []).filter((spec) =>
+            (!downloadable || spec.kind !== 'webspeech') && couldRun(spec, entry));
         for (let i = 0; i < specs.length; i++) {
             const engine = engineFor(specs[i], entry);
             if (!engine) {
@@ -1259,9 +1263,10 @@ export const init = (config) => {
      * Gather everything readable: the page, its nested same-origin frames, and
      * any cross-origin frame that answers the bridge handshake.
      *
-     * @return {Promise<Array>}
+     * @param {Boolean} limited Apply the playback character limit.
+     * @return {Promise<Object>}
      */
-    const collectChunks = async () => {
+    const collectChunks = async (limited = true) => {
         const root = document.getElementById(config.readid) || document.body;
         const items = [];
         collectFrom(root, items, {seen: Object.create(null), depth: 0});
@@ -1289,7 +1294,7 @@ export const init = (config) => {
         const seen = Object.create(null);
         let total = 0;
         const push = (chunk) => {
-            if (config.maxlen && total >= config.maxlen) {
+            if (limited && config.maxlen && total >= config.maxlen) {
                 return;
             }
             const key = chunk.text.toLowerCase();
@@ -1325,6 +1330,7 @@ export const init = (config) => {
         unhighlightChunk(currentChunk);
         currentChunk = null;
         state = STATE_IDLE;
+        downloadButton.disabled = false;
         paused = false;
         gateResolve = null;
         stopButton.style.display = 'none';
@@ -1422,10 +1428,146 @@ export const init = (config) => {
         finish();
     };
 
+    // Keep the completed file available for an explicit save, including browsers
+    // that block an automatic download after a long synthesis operation.
+    const downloadButton = document.createElement('button');
+    downloadButton.type = 'button';
+    downloadButton.className = 'ahotts-download btn btn-secondary btn-sm mt-1';
+    downloadButton.textContent = config.labels.download || '';
+    controls.appendChild(downloadButton);
+    const saveLink = document.createElement('a');
+    saveLink.className = 'ahotts-save btn btn-link btn-sm';
+    saveLink.textContent = config.labels.saveaudio || '';
+    saveLink.hidden = true;
+    controls.appendChild(saveLink);
+
+    downloadButton.addEventListener('click', async () => {
+        if (downloading || state !== STATE_IDLE) {
+            return;
+        }
+        downloading = true;
+        stopped = false;
+        downloadButton.disabled = true;
+        controls.querySelectorAll('select').forEach((select) => { select.disabled = true; });
+        stopButton.style.display = '';
+        saveLink.hidden = true;
+        if (downloadUrl) {
+            URL.revokeObjectURL(downloadUrl);
+            downloadUrl = null;
+        }
+        let context = null;
+        try {
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextClass) {
+                throw new Error('Audio decoding unavailable');
+            }
+            context = new AudioContextClass();
+            const engine = await resolveEngine(language, true);
+            if (stopped) {
+                return;
+            }
+            if (!engine) {
+                setStatus(messages.downloadunavailable || '');
+                return;
+            }
+            // Export the entire collected region, without the playback length cap.
+            const collected = await collectChunks(false);
+            if (stopped) {
+                return;
+            }
+            if (!collected.chunks.length) {
+                setStatus(collected.blocked ? messages.externalnobridge : messages.nocontent);
+                return;
+            }
+            const parts = [];
+            let length = 0;
+            for (let i = 0; i < collected.chunks.length; i++) {
+                if (stopped) {
+                    return;
+                }
+                setStatus((messages.downloadprogress || '')
+                    .replace('{current}', i + 1).replace('{total}', collected.chunks.length));
+                let token = null;
+                try {
+                    // Process one fragment at a time and release its URL promptly.
+                    /* eslint-disable-next-line no-await-in-loop */
+                    token = await engine.prepare(collected.chunks[i].text);
+                    if (stopped) {
+                        return;
+                    }
+                    /* eslint-disable-next-line no-await-in-loop */
+                    const response = await fetch(token);
+                    if (!response.ok) {
+                        throw new Error('Audio fetch failed');
+                    }
+                    /* eslint-disable-next-line no-await-in-loop */
+                    const bytes = await response.arrayBuffer();
+                    /* eslint-disable-next-line no-await-in-loop */
+                    const buffer = await context.decodeAudioData(bytes);
+                    const samples = new Float32Array(buffer.length);
+                    // decodeAudioData resamples all fragments to context.sampleRate.
+                    for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+                        const data = buffer.getChannelData(channel);
+                        for (let j = 0; j < samples.length; j++) {
+                            samples[j] += data[j] / buffer.numberOfChannels;
+                        }
+                    }
+                    if (parts.length) {
+                        const gap = new Float32Array(Math.round(context.sampleRate * 0.15));
+                        parts.push(gap);
+                        length += gap.length;
+                    }
+                    parts.push(samples);
+                    length += samples.length;
+                } finally {
+                    if (token !== null) {
+                        engine.release(token);
+                    }
+                }
+            }
+            if (stopped) {
+                return;
+            }
+            const samples = new Float32Array(length);
+            let offset = 0;
+            parts.forEach((part) => {
+                samples.set(part, offset);
+                offset += part.length;
+            });
+            downloadUrl = URL.createObjectURL(encodeWav(samples, context.sampleRate));
+            const title = (document.title || 'audio').replace(/[^\p{L}\p{N}_-]+/gu, '-').slice(0, 80) || 'audio';
+            saveLink.href = downloadUrl;
+            saveLink.download = title + '-' + language.code + '.wav';
+            saveLink.hidden = false;
+            setStatus([messages.downloadready, collected.blocked ? messages.externalnobridge : '']
+                .filter(Boolean).join(' '));
+            saveLink.click();
+        } catch (error) {
+            if (!stopped) {
+                setStatus(messages.downloaderror || '');
+            }
+        } finally {
+            if (context) {
+                await context.close().catch(() => {});
+            }
+            if (stopped) {
+                setStatus(messages.downloadcancelled || '');
+            }
+            downloading = false;
+            downloadButton.disabled = false;
+            controls.querySelectorAll('select').forEach((select) => { select.disabled = false; });
+            stopButton.style.display = 'none';
+        }
+    });
+
     link.addEventListener('click', (e) => {
         e.preventDefault();
+        if (downloading) {
+            return;
+        }
         if (state === STATE_IDLE) {
             state = STATE_PLAYING;
+            downloadButton.disabled = true;
             playChunks();
         } else if (state === STATE_PLAYING) {
             paused = true;
@@ -1454,6 +1596,9 @@ export const init = (config) => {
     // Stop playback when leaving the page.
     window.addEventListener('beforeunload', () => {
         stopPlayback();
+        if (downloadUrl) {
+            URL.revokeObjectURL(downloadUrl);
+        }
         if (bridge) {
             bridge.destroy();
         }

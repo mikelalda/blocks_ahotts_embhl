@@ -1,0 +1,106 @@
+DESPLIEGUE DE AHOTTS POR CURSO
+
+Ejecutar desde la raíz de Moodle con el usuario del servicio que pueda leer
+config.php y acceder a la base de datos y a moodledata.
+
+1. Simular el curso de prueba:
+   php blocks/ahotts_embhl/cli/provision_courses.php --courseid=261 --language=eu --scorm-current-window --dry-run
+
+   Aplicar al curso 261 (euskera, según el ejemplo facilitado):
+   php blocks/ahotts_embhl/cli/provision_courses.php --courseid=261 --language=eu --scorm-current-window --apply
+
+2. Simular todos los cursos:
+   php blocks/ahotts_embhl/cli/provision_courses.php --all --scorm-current-window --dry-run
+
+3. Revisar las líneas JSON y los cursos con action=skip.
+   El idioma se toma de course.lang cuando está definido; si está vacío,
+   se detecta automáticamente según las reglas descritas más abajo.
+   --language=eu permite indicarlo para un curso sin cambiar course.lang.
+   Esta opción tiene prioridad sobre el mapa y no se admite con --all.
+   Si la detección es ambigua o necesita corrección, preparar un JSON de correspondencias
+   confirmadas y añadir --language-map=/ruta/idiomas.json a ambos comandos.
+   Correspondencia para el curso 261, según el ejemplo facilitado:
+   {"261":"eu"}
+
+4. Cuando se decida guardar, sustituir --dry-run por --apply.
+   Para probar primero la aplicación, conservar --courseid=261.
+
+DETECCIÓN AUTOMÁTICA (ACTIVA POR DEFECTO)
+
+Prioridad: --language, --language-map, course.lang, referencias facilitadas,
+nombre del curso, y finalmente nombre + resumen + títulos de secciones,
+páginas y SCORM. No usa el idioma del administrador ni el valor global del
+sitio como sustituto del idioma real. No envía contenido a servicios externos.
+
+Las referencias identificadas por el usuario se aplican al curso al que
+pertenecen, únicamente en aurrekoikastaroak.birt.eus. Así se identifican los
+cursos 310 (en), 200 (es) y 261 (eu) mientras esas páginas sigan perteneciendo
+a ellos. Un idioma configurado o una correspondencia explícita tiene prioridad.
+
+La inferencia léxica reconoce es/eu/en. Requiere al menos dos palabras
+distintas y una ventaja clara sobre el segundo idioma. Excluye fragmentos
+{mlang ...} y spans multilang para evitar que traducciones paralelas decidan
+el resultado. Los títulos duplicados no aumentan la puntuación.
+language_source indica la fuente y language_evidence contiene las palabras
+y puntuaciones de cada idioma. Es una heurística, no una garantía: revisar
+el dry run, especialmente en cursos bilingües o de aprendizaje de idiomas.
+Si las pistas son insuficientes o ambiguas, sigue haciendo skip e informa
+de la evidencia para poder completar un mapa explícito.
+
+Ejemplo verificado: Desarrollo de entornos interactivos multidispositivo
+copia 1 -> es -> es_es, sin necesidad de --language-map.
+
+Pruebas sin base de datos:
+php blocks/ahotts_embhl/cli/test_course_language.php
+
+SCORM
+
+--scorm-current-window cambia scorm.popup a 0 (Apariencia > Ventana actual)
+para los SCORM existentes en el alcance elegido. Con --courseid=261 solo
+afecta a ese curso; con --all afecta a todos los cursos, incluso cuando el
+bloque de un curso quede pendiente por idioma o conflicto. No cambia el
+valor predeterminado de nuevas actividades. Conserva paquetes, intentos,
+calificaciones y el resto de la configuración. Invalida la caché de los
+cursos modificados. La simulación informa popup_before y popup_after por
+actividad; el resumen diferencia saved (bloques) y scorm_saved (SCORM).
+
+ALCANCE
+
+Una instancia por curso con pagetypepattern=* y showinsubcontexts=1: portada
+del curso, secciones y páginas de actividades que admitan bloques. Los temas
+o diseños sin regiones de bloques (por ejemplo, ciertas pantallas de examen)
+no pueden mostrarlo. No inserta contenido dentro de páginas ni de paquetes
+SCORM, ni modifica el idioma del curso. Incluye cursos ocultos, excluye la
+portada del sitio y no configura automáticamente cursos creados en el futuro.
+
+No borra instancias ni excepciones. Si hay bloques de actividades, bloques
+heredados de categorías/sistema, varias instancias o excepciones de posición,
+omite el curso para revisión. Una instancia compatible se amplía conservando
+su configuración salvo lang. La segunda ejecución queda sin cambios si ya
+coinciden idioma, patrón y herencia.
+
+Exige langmode=fixed y que el idioma esté habilitado en chooserlangs para que
+la configuración por curso surta efecto. No cambia ajustes globales. Inglés
+sin variante se asigna a en_us; se puede indicar en_uk en el mapa.
+
+Comprueba el sitio de destino. En otro entorno hay que indicar explícitamente
+--expected-site=https://sitio-de-pruebas. Las referencias 24203, 16055 y 23945
+se consultan y reportan si existen; sirven de idioma conocido para su propio
+curso cuando course.lang está vacío, sin copiar su contenido.
+
+DRY RUN Y APLICACIÓN
+
+La simulación no llama a las operaciones de escritura de bloques. El arranque
+normal de Moodle puede gestionar sus cachés. --apply usa bloqueo entre
+ejecuciones de este script y una transacción para sus escrituras; conviene
+evitar edición simultánea de bloques por otras vías durante la aplicación.
+Los bloques marcados skip no se modifican; los SCORM del alcance sí pueden
+actualizarse si se pidió --scorm-current-window.
+Código de salida 0: completo; 2: cursos pendientes; 1: error.
+
+VALIDACIÓN EN ESTE ENTORNO
+
+Consultar validation.txt. Sintaxis y argumentos comprobados. La simulación
+real del curso 261 se intentó pero no pudo leer config.php; sudo como
+www-data requiere contraseña. No se ha probado la rama de aplicación
+contra una base de datos ni se ha verificado visualmente el resultado.

@@ -73,7 +73,6 @@ $string['pipervoice_help'] = 'Voz usada mientras quien lee no elija otra.';
 $string['pipervoice_antton'] = 'Antton (euskera, masculina)';
 $string['pipervoice_maider'] = 'Maider (euskera, femenina)';
 $string['pipervoice_davefx'] = 'Davefx (castellano de España, masculina)';
-$string['pipervoice_claude'] = 'Claude (castellano de México, femenina)';
 $string['pipervoice_alba'] = 'Alba (inglés británico, femenina)';
 $string['pipervoice_ryan'] = 'Ryan (inglés americano, masculina)';
 $string['pipervoicelang_eu'] = 'euskera';
@@ -101,3 +100,12 @@ $string['piperphonemizerwasm_help'] = 'URL del fichero .wasm del fonemizador. Se
 $string['status_preparingvoice'] = 'Preparando la voz. La primera vez hay que descargarla.';
 $string['status_voicefallback'] = 'No se ha podido arrancar la voz del navegador; se usa el servicio en línea.';
 $string['status_enginesunavailable'] = 'No hay ninguna voz disponible para este idioma en este navegador.';
+
+// Offline audio download.
+$string['downloadaudio'] = 'Descargar audio';
+$string['saveaudio'] = 'Guardar audio (WAV)';
+$string['status_downloadunavailable'] = 'La descarga requiere una voz local o una API de audio configurada para este idioma. La voz propia del navegador no se puede exportar.';
+$string['status_downloadprogress'] = 'Preparando audio: fragmento {current} de {total}.';
+$string['status_downloadready'] = 'Audio listo. Guarda el archivo WAV para escucharlo sin conexión.';
+$string['status_downloaderror'] = 'No se ha podido generar el audio completo. Vuelve a intentarlo.';
+$string['status_downloadcancelled'] = 'Descarga de audio cancelada.';

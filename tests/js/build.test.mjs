@@ -98,5 +98,6 @@ test('the builds are up to date with the sources', () => {
         );
     });
 
+    assert.match(speechBuild, /ahotts-download/, 'the build contains the audio download control');
     assert.match(speechBuild, /ahotts-scorm-bridge/, 'the build contains the bridge protocol');
 });

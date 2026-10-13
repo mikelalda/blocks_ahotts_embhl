@@ -83,12 +83,11 @@ class languages {
      */
     const PIPER_VOICES = [
         'eu' => [
-            'antton' => 'https://huggingface.co/itzune/antton-tts/resolve/main/eu-antton-medium.onnx',
             'maider' => 'https://huggingface.co/itzune/maider-tts/resolve/main/eu-maider-medium.onnx',
+            'antton' => 'https://huggingface.co/itzune/antton-tts/resolve/main/eu-antton-medium.onnx',
         ],
         'es' => [
             'davefx' => 'https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_ES/davefx/medium/es_ES-davefx-medium.onnx',
-            'claude' => 'https://huggingface.co/rhasspy/piper-voices/resolve/main/es/es_MX/claude/high/es_MX-claude-high.onnx',
         ],
         'en' => [
             'alba' => 'https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_GB/alba/medium/en_GB-alba-medium.onnx',
