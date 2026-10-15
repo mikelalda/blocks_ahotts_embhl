@@ -126,6 +126,8 @@ class block_ahotts_embhl extends block_base {
             'language' => get_string('languagelabel', 'block_ahotts_embhl'),
             'voice' => get_string('voicelabel', 'block_ahotts_embhl'),
             'download' => get_string('downloadaudio', 'block_ahotts_embhl'),
+            'downloadpdfaudio' => get_string('downloadaudiopdf', 'block_ahotts_embhl'),
+            'downloadpdffile' => get_string('downloadpdffile', 'block_ahotts_embhl'),
             'saveaudio' => get_string('saveaudio', 'block_ahotts_embhl'),
         ];
 
@@ -136,6 +138,10 @@ class block_ahotts_embhl extends block_base {
             'langmode' => $langmode,
             'lang' => $defaultlang,
             'languages' => $languages,
+            'pdfjs' => [
+                'library' => (new moodle_url('/blocks/ahotts_embhl/js/pdfjs/loader.mjs'))->out(false),
+                'worker' => (new moodle_url('/blocks/ahotts_embhl/js/pdfjs/pdf.worker.min.mjs'))->out(false),
+            ],
         ];
 
         if ($piperenabled) {
@@ -172,6 +178,10 @@ class block_ahotts_embhl extends block_base {
             'downloadready' => get_string('status_downloadready', 'block_ahotts_embhl'),
             'downloaderror' => get_string('status_downloaderror', 'block_ahotts_embhl'),
             'downloadcancelled' => get_string('status_downloadcancelled', 'block_ahotts_embhl'),
+            'pdfreading' => get_string('status_pdfreading', 'block_ahotts_embhl'),
+            'pdfnotfound' => get_string('status_pdfnotfound', 'block_ahotts_embhl'),
+            'pdferror' => get_string('status_pdferror', 'block_ahotts_embhl'),
+            'pdfdownloadstarted' => get_string('status_pdfdownloadstarted', 'block_ahotts_embhl'),
             'enginesunavailable' => get_string('status_enginesunavailable', 'block_ahotts_embhl'),
         ];
 

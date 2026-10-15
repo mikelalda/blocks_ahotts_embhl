@@ -60,6 +60,14 @@ can be cancelled with **Stop**. The file downloads automatically where allowed;
 **Save audio (WAV)** also remains available for an explicit save. Once saved,
 the learner can listen without opening Moodle or connecting to the internet.
 
+**Download PDF audio (WAV)** is a separate option for a digital PDF embedded or
+linked from the reading area, including one shown inside a same-origin SCORM
+package. It extracts selectable text from every page with the locally hosted
+PDF.js library before synthesising the WAV. The PDF must be served from the
+Moodle origin; scanned PDFs and cross-origin PDF files are not supported.
+**Download PDF** saves the original PDF instead. For a PDF.js viewer inside a
+same-origin SCORM package, it downloads the viewer's `file` document.
+
 Export skips Web Speech because browser speech does not expose audio data.
 Languages that only have Web Speech need a local Piper voice or a configured
 API before they can be downloaded. Generation needs access to any uncached
@@ -289,7 +297,7 @@ Limitations
 * A cross-origin iframe **inside** a cross-origin package is not reached: the
   bridge reads its own document and its same-origin children only. Relaying
   between bridges is not implemented.
-* Text drawn on a canvas, or living only in an image or PDF, cannot be read.
+* Text drawn on a canvas, or living only in an image or scanned PDF, cannot be read.
 * The frame must be allowed to run scripts and to talk to its parent. An iframe
   with a `sandbox` attribute needs at least `allow-scripts`; the package's host
   must also allow Moodle in its `frame-ancestors` CSP directive, or the content
@@ -354,4 +362,6 @@ GNU GPL v3 or later. This plugin requires no ReadSpeaker licence; audio comes
 from the voices running in the learner's browser, from the endpoints you
 configure, and from the browser's own speech synthesis. The third-party runtime
 and voices it can load are listed under *Self-hosting the runtime and the
-voices*, with their own licences.
+voices*, with their own licences. PDF text extraction uses the locally bundled
+PDF.js 6.4.299 distribution under Apache License 2.0; see
+[`js/pdfjs/LICENSE`](js/pdfjs/LICENSE).

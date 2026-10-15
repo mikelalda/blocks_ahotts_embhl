@@ -93,6 +93,8 @@ const PROTOCOL_VERSION = 1;
 // Chunk ids accepted from a bridge.
 const CHUNK_ID_PATTERN = /^c[0-9]{1,9}$/;
 
+let pdfJsLoading = null;
+
 /**
  * Whether the browser supports the Web Speech API.
  *
@@ -231,6 +233,149 @@ const splitText = (raw) => {
 };
 
 /**
+ * Load the locally hosted PDF.js build once.
+ *
+ * @param {Object} config
+ * @return {Promise<Object>}
+ */
+const loadPdfJs = (config) => {
+    if (window.pdfjsLib) {
+        window.pdfjsLib.GlobalWorkerOptions.workerSrc = config.pdfjs.worker;
+        return Promise.resolve(window.pdfjsLib);
+    }
+    if (!pdfJsLoading) {
+        pdfJsLoading = new Promise((resolve, reject) => {
+            const script = document.createElement('script');
+            script.type = 'module';
+            script.src = config.pdfjs.library;
+            script.onload = () => {
+                if (!window.pdfjsLib) {
+                    reject(new Error('PDF.js did not initialize'));
+                    return;
+                }
+                resolve(window.pdfjsLib);
+            };
+            script.onerror = () => reject(new Error('PDF.js could not be loaded'));
+            document.head.appendChild(script);
+        }).catch((error) => {
+            pdfJsLoading = null;
+            throw error;
+        });
+    }
+    return pdfJsLoading.then((pdfjs) => {
+        pdfjs.GlobalWorkerOptions.workerSrc = config.pdfjs.worker;
+        return pdfjs;
+    });
+};
+
+/**
+ * Extract all selectable text from a PDF, in page order.
+ *
+ * @param {String} url
+ * @param {Object} config
+ * @return {Promise<Array<String>>}
+ */
+const extractPdfChunks = async (url, config, isCancelled = () => false) => {
+    const source = new URL(url, window.location.href);
+    if (source.origin !== window.location.origin) {
+        throw new Error('Only same-origin PDFs can be read');
+    }
+    const pdfjs = await loadPdfJs(config);
+    if (isCancelled()) {
+        return [];
+    }
+    const loadingTask = pdfjs.getDocument({url: source.href, withCredentials: true});
+    const pdf = await loadingTask.promise;
+    const chunks = [];
+    const seen = Object.create(null);
+    try {
+        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
+            if (isCancelled()) {
+                break;
+            }
+            /* eslint-disable-next-line no-await-in-loop */
+            const page = await pdf.getPage(pageNumber);
+            /* eslint-disable-next-line no-await-in-loop */
+            const content = await page.getTextContent();
+            if (isCancelled()) {
+                break;
+            }
+            const text = content.items.map((item) => item.str || '').join(' ')
+                .replace(/\s+/g, ' ').trim();
+            splitText(text).forEach((chunk) => {
+                const key = chunk.toLowerCase();
+                if (!seen[key]) {
+                    seen[key] = true;
+                    chunks.push(chunk);
+                }
+            });
+        }
+    } finally {
+        await pdf.destroy();
+    }
+    return chunks;
+};
+
+/**
+ * Return the URL of an embedded or linked PDF, if the element points to one.
+ *
+ * @param {Element} element
+ * @return {String}
+ */
+const pdfUrlFor = (element) => {
+    const tag = element.tagName.toLowerCase();
+    const raw = tag === 'object' ? element.getAttribute('data')
+        : (tag === 'a' ? element.getAttribute('href') : element.getAttribute('src'));
+    if (!raw && tag !== 'iframe' && tag !== 'frame') {
+        return '';
+    }
+    const candidates = raw ? [raw] : [];
+    if (tag === 'iframe' || tag === 'frame') {
+        try {
+            const frameUrl = new URL(element.contentWindow.location.href);
+            candidates.push(frameUrl.href);
+            const pdfFile = frameUrl.searchParams.get('file');
+            if (pdfFile) {
+                candidates.push(new URL(pdfFile, frameUrl).href);
+            }
+        } catch (e) {
+            // A cross-origin frame cannot expose its final URL.
+        }
+    }
+    const type = (element.getAttribute('type') || '').toLowerCase();
+    for (let i = 0; i < candidates.length; i++) {
+        try {
+            const url = new URL(candidates[i], element.ownerDocument.location.href);
+            const isPdf = /\.pdf$/i.test(url.pathname) || type === 'application/pdf';
+            if (isPdf && (url.protocol === 'http:' || url.protocol === 'https:')) {
+                return url.href;
+            }
+        } catch (e) {
+            // Ignore malformed or inaccessible candidates.
+        }
+    }
+    return '';
+};
+
+/**
+ * Find the PDF URLs in the reading region and its same-origin frames.
+ *
+ * @param {Document} document_
+ * @param {String} readid
+ * @return {Array<String>}
+ */
+const collectPdfUrls = (document_, readid) => {
+    const root = document_.getElementById(readid) || document_.body;
+    const items = [];
+    collectFrom(root, items, {
+        seen: Object.create(null),
+        seenPdfs: Object.create(null),
+        depth: 0,
+    });
+    return items.filter((item) => item.kind === 'pdf').map((item) => item.url);
+};
+
+/**
  * Recursively collect readable chunks from an element, descending into
  * same-origin iframes (SCORM content) and recording cross-origin ones so the
  * caller can try the cooperative bridge on them.
@@ -248,6 +393,7 @@ const splitText = (raw) => {
 const collectFrom = (root, out, context) => {
     const ctx = context || {};
     const seen = ctx.seen || (ctx.seen = Object.create(null));
+    const seenPdfs = ctx.seenPdfs || (ctx.seenPdfs = Object.create(null));
     const depth = ctx.depth || 0;
 
     if (!root || !root.querySelectorAll || depth > MAX_FRAME_DEPTH) {
@@ -266,9 +412,25 @@ const collectFrom = (root, out, context) => {
     elements = elements.filter((el) => !elements.some((other) => other !== el && el.contains(other)));
 
     // Walk the tree once so that text and frames come out in reading order.
-    const frames = Array.prototype.slice.call(root.querySelectorAll('iframe,frame'))
-        .filter((frame) => !(frame.closest && frame.closest(SKIP_SELECTOR)));
-    const ordered = elements.concat(frames);
+    const media = Array.prototype.slice.call(root.querySelectorAll('iframe,frame,object,embed,a[href]'))
+        .filter((item) => {
+            if (item.closest && item.closest(SKIP_SELECTOR)) {
+                return false;
+            }
+            const tag = item.tagName.toLowerCase();
+            return tag === 'iframe' || tag === 'frame' || isVisible(item);
+        });
+    const pdfByElement = new Map();
+    media.forEach((item) => {
+        const url = pdfUrlFor(item);
+        if (url && !seenPdfs[url]) {
+            seenPdfs[url] = true;
+            pdfByElement.set(item, url);
+        }
+    });
+    const frames = media.filter((item) => item.tagName.toLowerCase() === 'iframe'
+        || item.tagName.toLowerCase() === 'frame');
+    const ordered = elements.concat(media);
     ordered.sort((a, b) => {
         if (a === b) {
             return 0;
@@ -279,6 +441,10 @@ const collectFrom = (root, out, context) => {
     });
 
     ordered.forEach((el) => {
+        if (pdfByElement.has(el)) {
+            out.push({kind: 'pdf', url: pdfByElement.get(el)});
+            return;
+        }
         if (frames.indexOf(el) !== -1) {
             let doc = null;
             try {
@@ -287,7 +453,7 @@ const collectFrom = (root, out, context) => {
                 doc = null; // Cross-origin: the DOM is not readable from here.
             }
             if (doc && doc.body) {
-                collectFrom(doc.body, out, {seen: seen, depth: depth + 1});
+                collectFrom(doc.body, out, {seen: seen, seenPdfs: seenPdfs, depth: depth + 1});
             } else if (el.contentWindow) {
                 out.push({kind: 'frame', frame: el});
             }
@@ -1266,14 +1432,18 @@ export const init = (config) => {
      * @param {Boolean} limited Apply the playback character limit.
      * @return {Promise<Object>}
      */
-    const collectChunks = async (limited = true) => {
+    const collectChunks = async (limited = true, pdfOnly = false) => {
         const root = document.getElementById(config.readid) || document.body;
         const items = [];
-        collectFrom(root, items, {seen: Object.create(null), depth: 0});
+        collectFrom(root, items, {
+            seen: Object.create(null),
+            seenPdfs: Object.create(null),
+            depth: 0,
+        });
 
         // Start every handshake at once, then keep the reading order.
-        const frames = items.filter((item) => item.kind === 'frame');
-        let blocked = 0;
+        const frames = pdfOnly ? [] : items.filter((item) => item.kind === 'frame');
+        let blocked = pdfOnly ? items.filter((item) => item.kind === 'frame').length : 0;
         const connected = new Map();
         if (frames.length) {
             if (!bridge) {
@@ -1308,6 +1478,18 @@ export const init = (config) => {
 
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
+            if (item.kind === 'pdf') {
+                if (pdfOnly) {
+                    setStatus(messages.pdfreading || '');
+                    /* eslint-disable-next-line no-await-in-loop */
+                    const pdfChunks = await extractPdfChunks(item.url, config, () => stopped);
+                    pdfChunks.forEach((text) => push({kind: 'local', text: text}));
+                }
+                continue;
+            }
+            if (pdfOnly) {
+                continue;
+            }
             if (item.kind === 'local') {
                 push({kind: 'local', el: item.el, text: item.text});
                 continue;
@@ -1326,11 +1508,13 @@ export const init = (config) => {
         return {chunks: chunks, blocked: blocked};
     };
 
+    let downloadButtons = [];
+
     const finish = () => {
         unhighlightChunk(currentChunk);
         currentChunk = null;
         state = STATE_IDLE;
-        downloadButton.disabled = false;
+        downloadButtons.forEach((button) => { button.disabled = false; });
         paused = false;
         gateResolve = null;
         stopButton.style.display = 'none';
@@ -1435,19 +1619,30 @@ export const init = (config) => {
     downloadButton.className = 'ahotts-download btn btn-secondary btn-sm mt-1';
     downloadButton.textContent = config.labels.download || '';
     controls.appendChild(downloadButton);
+    const pdfDownloadButton = document.createElement('button');
+    pdfDownloadButton.type = 'button';
+    pdfDownloadButton.className = 'ahotts-download-pdf-audio btn btn-secondary btn-sm mt-1';
+    pdfDownloadButton.textContent = config.labels.downloadpdfaudio || '';
+    controls.appendChild(pdfDownloadButton);
+    const pdfFileDownloadButton = document.createElement('button');
+    pdfFileDownloadButton.type = 'button';
+    pdfFileDownloadButton.className = 'ahotts-download-pdf-file btn btn-secondary btn-sm mt-1';
+    pdfFileDownloadButton.textContent = config.labels.downloadpdffile || '';
+    controls.appendChild(pdfFileDownloadButton);
+    downloadButtons = [downloadButton, pdfDownloadButton, pdfFileDownloadButton];
     const saveLink = document.createElement('a');
     saveLink.className = 'ahotts-save btn btn-link btn-sm';
     saveLink.textContent = config.labels.saveaudio || '';
     saveLink.hidden = true;
     controls.appendChild(saveLink);
 
-    downloadButton.addEventListener('click', async () => {
+    const startDownload = async (pdfOnly) => {
         if (downloading || state !== STATE_IDLE) {
             return;
         }
         downloading = true;
         stopped = false;
-        downloadButton.disabled = true;
+        downloadButtons.forEach((button) => { button.disabled = true; });
         controls.querySelectorAll('select').forEach((select) => { select.disabled = true; });
         stopButton.style.display = '';
         saveLink.hidden = true;
@@ -1470,13 +1665,14 @@ export const init = (config) => {
                 setStatus(messages.downloadunavailable || '');
                 return;
             }
-            // Export the entire collected region, without the playback length cap.
-            const collected = await collectChunks(false);
+            // Exports bypass the playback cap; the PDF option collects every page.
+            const collected = await collectChunks(false, pdfOnly);
             if (stopped) {
                 return;
             }
             if (!collected.chunks.length) {
-                setStatus(collected.blocked ? messages.externalnobridge : messages.nocontent);
+                setStatus(pdfOnly ? (messages.pdfnotfound || '')
+                    : (collected.blocked ? messages.externalnobridge : messages.nocontent));
                 return;
             }
             const parts = [];
@@ -1537,14 +1733,14 @@ export const init = (config) => {
             downloadUrl = URL.createObjectURL(encodeWav(samples, context.sampleRate));
             const title = (document.title || 'audio').replace(/[^\p{L}\p{N}_-]+/gu, '-').slice(0, 80) || 'audio';
             saveLink.href = downloadUrl;
-            saveLink.download = title + '-' + language.code + '.wav';
+            saveLink.download = title + (pdfOnly ? '-pdf' : '') + '-' + language.code + '.wav';
             saveLink.hidden = false;
             setStatus([messages.downloadready, collected.blocked ? messages.externalnobridge : '']
                 .filter(Boolean).join(' '));
             saveLink.click();
         } catch (error) {
             if (!stopped) {
-                setStatus(messages.downloaderror || '');
+                setStatus(pdfOnly ? (messages.pdferror || '') : (messages.downloaderror || ''));
             }
         } finally {
             if (context) {
@@ -1554,10 +1750,40 @@ export const init = (config) => {
                 setStatus(messages.downloadcancelled || '');
             }
             downloading = false;
-            downloadButton.disabled = false;
+            downloadButtons.forEach((button) => { button.disabled = false; });
             controls.querySelectorAll('select').forEach((select) => { select.disabled = false; });
             stopButton.style.display = 'none';
         }
+    };
+
+    downloadButton.addEventListener('click', () => startDownload(false));
+    pdfDownloadButton.addEventListener('click', () => startDownload(true));
+    pdfFileDownloadButton.addEventListener('click', () => {
+        if (downloading || state !== STATE_IDLE) {
+            return;
+        }
+        const pdfUrls = collectPdfUrls(document, config.readid);
+        const pdfUrl = pdfUrls.find((url) => {
+            try {
+                return new URL(url).origin === window.location.origin;
+            } catch (e) {
+                return false;
+            }
+        });
+        if (!pdfUrl) {
+            setStatus(messages.pdfnotfound || '');
+            return;
+        }
+        const filename = decodeURIComponent(new URL(pdfUrl).pathname.split('/').pop() || '')
+            .replace(/[^\p{L}\p{N}._-]+/gu, '-') || 'document.pdf';
+        const anchor = document.createElement('a');
+        anchor.href = pdfUrl;
+        anchor.download = /\.pdf$/i.test(filename) ? filename : filename + '.pdf';
+        anchor.hidden = true;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        setStatus(messages.pdfdownloadstarted || '');
     });
 
     link.addEventListener('click', (e) => {
@@ -1567,7 +1793,7 @@ export const init = (config) => {
         }
         if (state === STATE_IDLE) {
             state = STATE_PLAYING;
-            downloadButton.disabled = true;
+            downloadButtons.forEach((button) => { button.disabled = true; });
             playChunks();
         } else if (state === STATE_PLAYING) {
             paused = true;

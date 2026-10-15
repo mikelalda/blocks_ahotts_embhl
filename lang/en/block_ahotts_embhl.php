@@ -282,9 +282,15 @@ $string['status_enginesunavailable'] = 'No voice is available for this language 
 
 // Offline audio download.
 $string['downloadaudio'] = 'Download audio';
+$string['downloadaudiopdf'] = 'Download PDF audio (WAV)';
+$string['downloadpdffile'] = 'Download PDF';
 $string['saveaudio'] = 'Save audio (WAV)';
 $string['status_downloadunavailable'] = 'Audio download needs a local voice or a configured audio API for this language. Browser speech cannot be exported.';
 $string['status_downloadprogress'] = 'Preparing audio: fragment {current} of {total}.';
 $string['status_downloadready'] = 'Audio ready. Save the WAV file to listen offline.';
 $string['status_downloaderror'] = 'The complete audio could not be generated. Please try again.';
 $string['status_downloadcancelled'] = 'Audio download cancelled.';
+$string['status_pdfreading'] = 'Reading all PDF pages...';
+$string['status_pdfnotfound'] = 'No readable PDF was found. Use a digital PDF served from the same Moodle origin.';
+$string['status_pdferror'] = 'Could not extract all PDF text. Check that it is a digital PDF and try again.';
+$string['status_pdfdownloadstarted'] = 'The PDF download has started.';

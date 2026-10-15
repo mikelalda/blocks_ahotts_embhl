@@ -103,9 +103,15 @@ $string['status_enginesunavailable'] = 'Ez dago ahotsik eskuragarri hizkuntza ho
 
 // Offline audio download.
 $string['downloadaudio'] = 'Deskargatu audioa';
+$string['downloadaudiopdf'] = 'Deskargatu PDFaren audioa (WAV)';
+$string['downloadpdffile'] = 'Deskargatu PDFa';
 $string['saveaudio'] = 'Gorde audioa (WAV)';
 $string['status_downloadunavailable'] = 'Audioa deskargatzeko, tokiko ahots bat edo hizkuntza honetarako konfiguratutako audio API bat behar da. Nabigatzailearen ahotsa ezin da esportatu.';
 $string['status_downloadprogress'] = 'Audioa prestatzen: {current}. zatia, guztira {total}.';
 $string['status_downloadready'] = 'Audioa prest dago. Gorde WAV fitxategia konexiorik gabe entzuteko.';
 $string['status_downloaderror'] = 'Ezin izan da audio osoa sortu. Saiatu berriro.';
 $string['status_downloadcancelled'] = 'Audioaren deskarga bertan behera utzi da.';
+$string['status_pdfreading'] = 'PDFko orrialde guztiak irakurtzen...';
+$string['status_pdfnotfound'] = 'Ez da PDF irakurgarririk aurkitu. Erabili Moodleko domeinu berean dagoen PDF digitala.';
+$string['status_pdferror'] = 'Ezin izan da PDFaren testu osoa atera. Egiaztatu PDF digitala eta saiatu berriro.';
+$string['status_pdfdownloadstarted'] = 'PDFaren deskarga hasi da.';
