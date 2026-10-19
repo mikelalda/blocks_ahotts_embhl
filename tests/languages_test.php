@@ -229,4 +229,64 @@ class languages_test extends \advanced_testcase {
         $this->assertSame('maider', languages::api_voice('eu'));
         $this->assertSame('', languages::api_voice('is'));
     }
+
+    public function test_basque_prefers_pocket_tts_then_piper_then_the_api(): void {
+        $this->resetAfterTest(true);
+        set_config('apiurl_eu', 'https://tts.example.local/eu', 'block_ahotts_embhl');
+
+        $this->assertSame(['pockettts', 'piper', 'api'], array_column(languages::engines_for('eu', true, true), 'kind'));
+        $this->assertSame(['pockettts', 'api'], array_column(languages::engines_for('eu', false, true), 'kind'));
+        // Languages without a Pocket TTS model are not affected.
+        $this->assertSame('piper', languages::engines_for('es', true, true)[0]['kind']);
+    }
+
+    public function test_pocket_tts_voices_share_one_model_folder(): void {
+        $this->resetAfterTest(true);
+
+        $voices = languages::pockettts_voices(['eu', 'es']);
+
+        $this->assertSame(['pocket-maider', 'pocket-antton', 'pocket-nahia', 'pocket-ane', 'pocket-aitor'],
+            array_column($voices, 'id'));
+        foreach ($voices as $voice) {
+            $this->assertSame('eu', $voice['language']);
+            $this->assertStringStartsWith($voice['baseurl'] . 'voices/', $voice['voiceurl']);
+            $this->assertStringEndsWith('.safetensors', $voice['voiceurl']);
+            $this->assertNotEmpty($voice['label']);
+        }
+        $this->assertStringContainsString('huggingface.co/itzune/pocket-tts-basque-onnx', $voices[0]['baseurl']);
+    }
+
+    public function test_pocket_tts_honours_a_self_hosted_model(): void {
+        $this->resetAfterTest(true);
+        set_config('pocketttsbaseurl_eu', 'https://moodle.example.local/pockettts/eu', 'block_ahotts_embhl');
+
+        $voices = languages::pockettts_voices(['eu']);
+
+        $this->assertSame('https://moodle.example.local/pockettts/eu/', $voices[0]['baseurl']);
+        $this->assertSame('https://moodle.example.local/pockettts/eu/voices/Maider.safetensors', $voices[0]['voiceurl']);
+    }
+
+    public function test_default_pocket_tts_voice_falls_back_when_the_setting_makes_no_sense(): void {
+        $this->resetAfterTest(true);
+
+        set_config('pocketttsvoice_eu', 'nahia', 'block_ahotts_embhl');
+        $this->assertSame(['eu' => 'pocket-nahia'], languages::default_pockettts_voices(['eu', 'es']));
+
+        set_config('pocketttsvoice_eu', 'davefx', 'block_ahotts_embhl');
+        $this->assertSame(['eu' => 'pocket-antton'], languages::default_pockettts_voices(['eu']));
+    }
+
+    public function test_pocket_tts_needs_its_runtime(): void {
+        $this->resetAfterTest(true);
+        set_config('pocketttsenabled', 1, 'block_ahotts_embhl');
+        set_config('pocketttsort', languages::DEFAULT_POCKETTTS_ORT, 'block_ahotts_embhl');
+        $this->assertTrue(languages::pockettts_enabled());
+
+        set_config('pocketttsort', '', 'block_ahotts_embhl');
+        $this->assertFalse(languages::pockettts_enabled());
+
+        set_config('pocketttsort', languages::DEFAULT_POCKETTTS_ORT, 'block_ahotts_embhl');
+        set_config('pocketttsenabled', 0, 'block_ahotts_embhl');
+        $this->assertFalse(languages::pockettts_enabled());
+    }
 }

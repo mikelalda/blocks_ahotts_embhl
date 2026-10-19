@@ -73,5 +73,12 @@ function xmldb_block_ahotts_embhl_upgrade($oldversion) {
         upgrade_block_savepoint(true, 2026091803, 'ahotts_embhl');
     }
 
+    if ($oldversion < 2026101602) {
+        // The Articulate content proxy was dropped; forget its setting.
+        unset_config('hostedproxy', 'block_ahotts_embhl');
+
+        upgrade_block_savepoint(true, 2026101602, 'ahotts_embhl');
+    }
+
     return true;
 }

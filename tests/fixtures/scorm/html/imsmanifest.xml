@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<manifest identifier="m" xmlns="http://www.imsglobal.org/xsd/imscp_rootv1p1p2">
+  <organizations default="org"><organization identifier="org"><title>Curso HTML</title>
+    <item identifier="i2" identifierref="r2"><title>Segunda página</title></item>
+    <item identifier="i1" identifierref="r1"><title>Primera página</title></item>
+  </organization></organizations>
+  <resources>
+    <resource identifier="r1" type="webcontent" href="pages/uno.html"/>
+    <resource identifier="r2" type="webcontent" href="pages/dos.html?x=1"/>
+  </resources>
+</manifest>

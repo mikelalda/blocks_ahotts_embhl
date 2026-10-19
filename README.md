@@ -53,20 +53,49 @@ Existing instances, exceptions and inherited blocks are never deleted. See
 Downloading audio for offline listening
 --------------------------------------
 
-**Download audio** generates a single mono PCM WAV containing all the readable
-text currently received by the block, in reading order, using the selected
+**Download audio** generates a single mono MP3 (22050 Hz, 48 kbit/s) in
+reading order, encoded with the bundled lamejs (LGPL, `js/lame/`) in a Web
+Worker as the fragments are synthesised, one after the other. Where that
+worker cannot start, a 16-bit WAV is saved instead. On a SCORM package or a book it reads the **whole activity**,
+from `text.php`: every lesson of the package (as for the PDF below) or every
+chapter of the book the reader may see. Elsewhere it reads all the text the
+block currently receives from the page. It uses the selected
 language and local voice (or the configured aHoTTS API). It shows progress and
 can be cancelled with **Stop**. The file downloads automatically where allowed;
-**Save audio (WAV)** also remains available for an explicit save. Once saved,
+**Save audio** also remains available for an explicit save. Once saved,
 the learner can listen without opening Moodle or connecting to the internet.
 
-**Download PDF audio (WAV)** is a separate option for a digital PDF embedded or
-linked from the reading area, including one shown inside a same-origin SCORM
-package. It extracts selectable text from every page with the locally hosted
-PDF.js library before synthesising the WAV. The PDF must be served from the
-Moodle origin; scanned PDFs and cross-origin PDF files are not supported.
-**Download PDF** saves the original PDF instead. For a PDF.js viewer inside a
-same-origin SCORM package, it downloads the viewer's `file` document.
+Every export writes one line to the web server log through `clientlog.php`
+(`block_ahotts_embhl client: ... exportstart|exportdone|exporterror|exportcancel`),
+with the source, engine, number of fragments and, on failure, the fragment and
+the error, since synthesis happens in the browser and leaves no other trace.
+
+**Download PDF** saves a PDF embedded or linked from the reading area. For a
+PDF.js viewer inside a same-origin SCORM package, it downloads the viewer's
+`file` document.
+
+On a SCORM activity with no PDF on screen, **Download PDF** offers the PDF of
+the whole course, built on the server from the files of the published package
+(*Build a PDF from SCORM packages*, on by default):
+
+* **Rise 360**: every lesson and block from the course data in
+  `scormcontent/locales/`, with accordions, tabs and flashcards expanded and
+  images included. Questions are listed with their options, never with the
+  correct answer or the feedback.
+* **Storyline 360**: the text of every slide from `html5/data/js/`, in story
+  order, leaving feedback layers out. Storyline blocks inside a Rise course are
+  read the same way.
+* **Anything else** (eXeLearning, plain HTML): the pages listed by
+  `imsmanifest.xml`, in the order of its organisation, without navigation.
+
+The package is read, never played, so building the PDF cannot move a learner
+through the course or change their progress. Text and images are kept; layout,
+animation and interactions are not. The PDF is stored per package revision
+(`block_ahotts_embhl/scormpdf` in the activity context): replacing the package
+builds a new one in the background (ad hoc task) or, failing that, on the next
+download. `scormpdf.php` serves it to whoever may open the activity, within its
+opening dates. If the setting is off, a PDF shipped inside the package is
+offered instead.
 
 Export skips Web Speech because browser speech does not expose audio data.
 Languages that only have Web Speech need a local Piper voice or a configured
@@ -191,6 +220,51 @@ through `js/esm-bridge.js`, a small ES module shipped with the plugin. Neither
 uses `eval()` nor an inline script, so a strict CSP only has to allow the
 origins the files are served from.
 
+Natural Basque voices: Pocket TTS
+---------------------------------
+
+Basque is read first by [Pocket TTS](https://huggingface.co/kyutai/pocket-tts)
+(Kyutai), fine-tuned for Basque by itzune and published as
+[`itzune/pocket-tts-basque-onnx`](https://huggingface.co/itzune/pocket-tts-basque-onnx)
+(CC BY 4.0). It sounds more natural than Piper and offers five voices (Maider,
+Antton, Nahia, Ane, Aitor). Piper stays behind it: when Pocket TTS cannot start,
+or when the reader picks a Piper voice in the menu, Piper reads.
+
+```
+text --(Basque normaliser: 2024an, 10:30ean, %25...)--> words
+     --(SentencePiece)--> tokens --(text_conditioner)--> embeddings
+     --(flow_lm_main + flow_lm_flow, one 80 ms frame per step)--> latents   [worker 1]
+     --(Mimi decoder, streaming; WSOLA time stretch)--> 24 kHz audio      [worker 2]
+     --> Web Audio, played as it arrives
+```
+
+* **Two workers.** `js/pockettts/generator.js` and `js/pockettts/decoder.js`
+  run single-threaded ONNX Runtime Web each, so two cores are used without the
+  cross-origin isolation (COOP/COEP) that WebAssembly threads would need.
+* **Smaller attention cache.** The published graph declares a 1000-position
+  KV cache; the worker rewrites that declaration (5 bytes) so each sentence
+  only carries what it needs, with identical output.
+* **Numbers.** The model reads letters only, so `js/pockettts/normalize-eu.js`
+  spells out numbers, dates, times, ordinals, percentages, units and common
+  abbreviations, keeping the case endings written on them (`1990eko`, `10ean`).
+* **Download.** About 125 MB the first time (int8 graphs), kept in Cache
+  Storage. The model folder can be self-hosted (*Pocket TTS model folder*).
+* **Speed.** On a 2020s laptop it generates 1.3-1.5x faster than real time. On
+  slower devices playback waits for a little more audio after each stutter.
+
+Credits: Kyutai Pocket TTS; the HiTZ-Aholab studio corpus (Maider, Antton);
+the BSSD dataset (itzune/bssd); `pocket_tts_onnx.py` by KevinAHM (Apache-2.0),
+of which `js/pockettts/engine.js` is a port.
+
+Reading speed
+-------------
+
+The block offers a speed menu (0.5x to 2x, *Let the reader choose the speed*),
+remembered in the reader's browser, and a site default. The pitch is kept:
+Piper and the aHoTTS API play through `<audio>` with `preservesPitch`, Pocket TTS
+is stretched with WSOLA in its decoder worker, and the browser voice uses
+`utterance.rate`. Downloaded audio is always at normal speed.
+
 Reading iframes: what works and what cannot
 -------------------------------------------
 
@@ -285,6 +359,12 @@ It becomes readable in exactly two situations:
   example by exporting the package for LMS/web and uploading it to your own
   site, within the terms of your Articulate licence.
 
+Rise 360 LMS packages exported with hosted content are a common case: the zip
+only holds `indexAPI.html` and `goodbye.html`, and the course itself is framed
+from `packages.articulateusercontent.com`. The block recognises such frames and
+shows a specific notice (`status_externalhosted`); the rest of the page is still
+read aloud.
+
 Nothing else will do it. Proxying someone else's hosted content through your
 domain to fake same-origin is **not** part of this plugin: it raises
 authentication, CSP, licensing and content-integrity questions that need their
@@ -311,8 +391,10 @@ Development
 -----------
 
 Sources live in `amd/src/speech.js` (collection, bridge client, language and
-engine selection) and `amd/src/piper.js` (the in-browser Basque engine), and are
-compiled to `amd/build/*.min.js`. In a full Moodle checkout, rebuild them with
+engine selection), `amd/src/piper.js` (the Piper engine) and
+`amd/src/pockettts.js` (the Pocket TTS engine, page side), and are compiled to
+`amd/build/*.min.js`. The Pocket TTS workers in `js/pockettts/` are plain ES
+modules served as they are, with no build step. In a full Moodle checkout, rebuild them with
 Moodle's own tooling:
 
 ```bash
@@ -362,6 +444,4 @@ GNU GPL v3 or later. This plugin requires no ReadSpeaker licence; audio comes
 from the voices running in the learner's browser, from the endpoints you
 configure, and from the browser's own speech synthesis. The third-party runtime
 and voices it can load are listed under *Self-hosting the runtime and the
-voices*, with their own licences. PDF text extraction uses the locally bundled
-PDF.js 6.4.299 distribution under Apache License 2.0; see
-[`js/pdfjs/LICENSE`](js/pdfjs/LICENSE).
+voices*, with their own licences.
