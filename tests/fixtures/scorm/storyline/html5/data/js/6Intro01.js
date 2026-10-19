@@ -1,0 +1,1 @@
+window.globalProvideData('slide', '{"title":"Bienvenida","slideLayers":[{"title":"Base","objects":[{"kind":"vectorshape","textLib":[{"vartext":{"blocks":[{"spans":[{"text":"Hola, "},{"text":"it\'s the intro"}]},{"spans":[{"text":"L\\u00ednea con \\"comillas\\""}]}]}}]}]}]}');

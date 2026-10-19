@@ -47,6 +47,18 @@ export const makeDom = (html, url = 'https://moodle.example.org/course/view.php'
 };
 
 /**
+ * The source of an AMD module as a plain script: its imports of sibling modules
+ * removed and its exports turned into ordinary declarations. Concatenated, the
+ * modules share one scope, which is what the AMD build does too.
+ *
+ * @param {String} name
+ * @return {String}
+ */
+const moduleSource = (name) => fs.readFileSync(new URL(`amd/src/${name}.js`, root), 'utf8')
+    .replace(/^import \{[^}]*\} from '\.\/\w+';\n/gm, '')
+    .replace(/^export const /gm, 'const ');
+
+/**
  * Load amd/src/speech.js into a jsdom window and return its exports.
  *
  * @param {String} html Body markup for the page.
@@ -57,15 +69,14 @@ export const loadSpeech = (html, url) => {
     const dom = makeDom(html, url);
     // speech.js imports the Piper engine; concatenating the two modules puts
     // createPiperEngine in the same scope, which is what the AMD build does too.
-    const piper = fs.readFileSync(new URL('amd/src/piper.js', root), 'utf8')
-        .replace(/^export const /gm, 'const ');
-    const speech = fs.readFileSync(new URL('amd/src/speech.js', root), 'utf8')
-        .replace(/^import \{[^}]*\} from '\.\/piper';\n/m, '')
-        .replace(/^export const /gm, 'const ');
-    dom.window.eval(piper + '\n' + speech
+    const piper = moduleSource('piper');
+    const pockettts = moduleSource('pockettts');
+    const speech = moduleSource('speech');
+    dom.window.eval(piper + '\n' + pockettts + '\n' + speech
         + '\n;window.__speech = {init: init, testing: __testing};'
         + '\n;window.__piper = {phonemesToIds, encodeWav, createPiperEngine, hasWebGpu,'
-        + ' espeakPhonemizer, resolvePhonemizer};');
+        + ' espeakPhonemizer, resolvePhonemizer, createAudioSink, wavHeader, toPcm16};'
+        + '\n;window.__pockettts = {createPocketTtsEngine, unlockAudio, audioContext, isSupported, SAMPLE_RATE};');
     return {
         dom,
         window: dom.window,
@@ -73,6 +84,7 @@ export const loadSpeech = (html, url) => {
         init: dom.window.__speech.init,
         testing: dom.window.__speech.testing,
         piper: dom.window.__piper,
+        pockettts: dom.window.__pockettts,
     };
 };
 

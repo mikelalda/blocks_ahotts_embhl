@@ -53,20 +53,49 @@ Existing instances, exceptions and inherited blocks are never deleted. See
 Downloading audio for offline listening
 --------------------------------------
 
-**Download audio** generates a single mono PCM WAV containing all the readable
-text currently received by the block, in reading order, using the selected
+**Download audio** generates a single mono MP3 (22050 Hz, 48 kbit/s) in
+reading order, encoded with the bundled lamejs (LGPL, `js/lame/`) in a Web
+Worker as the fragments are synthesised, one after the other. Where that
+worker cannot start, a 16-bit WAV is saved instead. On a SCORM package or a book it reads the **whole activity**,
+from `text.php`: every lesson of the package (as for the PDF below) or every
+chapter of the book the reader may see. Elsewhere it reads all the text the
+block currently receives from the page. It uses the selected
 language and local voice (or the configured aHoTTS API). It shows progress and
 can be cancelled with **Stop**. The file downloads automatically where allowed;
-**Save audio (WAV)** also remains available for an explicit save. Once saved,
+**Save audio** also remains available for an explicit save. Once saved,
 the learner can listen without opening Moodle or connecting to the internet.
 
-**Download PDF audio (WAV)** is a separate option for a digital PDF embedded or
-linked from the reading area, including one shown inside a same-origin SCORM
-package. It extracts selectable text from every page with the locally hosted
-PDF.js library before synthesising the WAV. The PDF must be served from the
-Moodle origin; scanned PDFs and cross-origin PDF files are not supported.
-**Download PDF** saves the original PDF instead. For a PDF.js viewer inside a
-same-origin SCORM package, it downloads the viewer's `file` document.
+Every export writes one line to the web server log through `clientlog.php`
+(`block_ahotts_embhl client: ... exportstart|exportdone|exporterror|exportcancel`),
+with the source, engine, number of fragments and, on failure, the fragment and
+the error, since synthesis happens in the browser and leaves no other trace.
+
+**Download PDF** saves a PDF embedded or linked from the reading area. For a
+PDF.js viewer inside a same-origin SCORM package, it downloads the viewer's
+`file` document.
+
+On a SCORM activity with no PDF on screen, **Download PDF** offers the PDF of
+the whole course, built on the server from the files of the published package
+(*Build a PDF from SCORM packages*, on by default):
+
+* **Rise 360**: every lesson and block from the course data in
+  `scormcontent/locales/`, with accordions, tabs and flashcards expanded and
+  images included. Questions are listed with their options, never with the
+  correct answer or the feedback.
+* **Storyline 360**: the text of every slide from `html5/data/js/`, in story
+  order, leaving feedback layers out. Storyline blocks inside a Rise course are
+  read the same way.
+* **Anything else** (eXeLearning, plain HTML): the pages listed by
+  `imsmanifest.xml`, in the order of its organisation, without navigation.
+
+The package is read, never played, so building the PDF cannot move a learner
+through the course or change their progress. Text and images are kept; layout,
+animation and interactions are not. The PDF is stored per package revision
+(`block_ahotts_embhl/scormpdf` in the activity context): replacing the package
+builds a new one in the background (ad hoc task) or, failing that, on the next
+download. `scormpdf.php` serves it to whoever may open the activity, within its
+opening dates. If the setting is off, a PDF shipped inside the package is
+offered instead.
 
 Export skips Web Speech because browser speech does not expose audio data.
 Languages that only have Web Speech need a local Piper voice or a configured
@@ -285,6 +314,12 @@ It becomes readable in exactly two situations:
   example by exporting the package for LMS/web and uploading it to your own
   site, within the terms of your Articulate licence.
 
+Rise 360 LMS packages exported with hosted content are a common case: the zip
+only holds `indexAPI.html` and `goodbye.html`, and the course itself is framed
+from `packages.articulateusercontent.com`. The block recognises such frames and
+shows a specific notice (`status_externalhosted`); the rest of the page is still
+read aloud.
+
 Nothing else will do it. Proxying someone else's hosted content through your
 domain to fake same-origin is **not** part of this plugin: it raises
 authentication, CSP, licensing and content-integrity questions that need their
@@ -362,6 +397,4 @@ GNU GPL v3 or later. This plugin requires no ReadSpeaker licence; audio comes
 from the voices running in the learner's browser, from the endpoints you
 configure, and from the browser's own speech synthesis. The third-party runtime
 and voices it can load are listed under *Self-hosting the runtime and the
-voices*, with their own licences. PDF text extraction uses the locally bundled
-PDF.js 6.4.299 distribution under Apache License 2.0; see
-[`js/pdfjs/LICENSE`](js/pdfjs/LICENSE).
+voices*, with their own licences.

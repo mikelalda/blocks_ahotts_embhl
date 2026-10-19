@@ -81,6 +81,7 @@ class block_ahotts_embhl extends block_base {
         $configuredlang = (string) $this->plugin_config_language;
         $offered = \block_ahotts_embhl\local\languages::offered();
         $piperenabled = \block_ahotts_embhl\local\languages::piper_enabled();
+        $pocketttsenabled = \block_ahotts_embhl\local\languages::pockettts_enabled();
 
         $defaultlang = \block_ahotts_embhl\local\languages::resolve(
             $langmode,
@@ -92,7 +93,8 @@ class block_ahotts_embhl extends block_base {
         // Only the modes that let the reading language change at runtime need
         // more than the resolved one.
         $codes = in_array($langmode, ['chooser', 'content'], true) ? $offered : [$defaultlang];
-        $languages = \block_ahotts_embhl\local\languages::build($codes, $configuredlang, $piperenabled);
+        $languages = \block_ahotts_embhl\local\languages::build($codes, $configuredlang, $piperenabled,
+            $pocketttsenabled);
 
         // No language has an engine that could speak it: offer nothing at all.
         if (!$languages) {
@@ -126,7 +128,6 @@ class block_ahotts_embhl extends block_base {
             'language' => get_string('languagelabel', 'block_ahotts_embhl'),
             'voice' => get_string('voicelabel', 'block_ahotts_embhl'),
             'download' => get_string('downloadaudio', 'block_ahotts_embhl'),
-            'downloadpdfaudio' => get_string('downloadaudiopdf', 'block_ahotts_embhl'),
             'downloadpdffile' => get_string('downloadpdffile', 'block_ahotts_embhl'),
             'saveaudio' => get_string('saveaudio', 'block_ahotts_embhl'),
         ];
@@ -138,10 +139,17 @@ class block_ahotts_embhl extends block_base {
             'langmode' => $langmode,
             'lang' => $defaultlang,
             'languages' => $languages,
-            'pdfjs' => [
-                'library' => (new moodle_url('/blocks/ahotts_embhl/js/pdfjs/loader.mjs'))->out(false),
-                'worker' => (new moodle_url('/blocks/ahotts_embhl/js/pdfjs/pdf.worker.min.mjs'))->out(false),
-            ],
+            // PDFs published inside the SCORM package of this activity, best first.
+            'packagepdfs' => \block_ahotts_embhl\local\package_pdf::for_page($this->page),
+            // Web Worker that encodes the audio export to MP3.
+            'exporter' => self::exporter_urls(),
+            // Where audio exports report how they went, for the server log.
+            'logurl' => (new moodle_url('/blocks/ahotts_embhl/clientlog.php'))->out(false),
+            'sesskey' => sesskey(),
+            'cmid' => $this->page->cm ? (int) $this->page->cm->id : 0,
+            // On a SCORM package or a book, the audio download reads the whole activity.
+            'texturl' => \block_ahotts_embhl\local\activity_text::supports($this->page->cm)
+                ? \block_ahotts_embhl\local\activity_text::url($this->page->cm)->out(false) : '',
         ];
 
         if ($piperenabled) {
@@ -159,6 +167,20 @@ class block_ahotts_embhl extends block_base {
             ];
         }
 
+        if ($pocketttsenabled) {
+            // The neural voices: the models come from the configured folder,
+            // the two workers that run them from this plugin.
+            $jsconfig['pockettts'] = [
+                'defaults' => \block_ahotts_embhl\local\languages::default_pockettts_voices($codes),
+                'chooser' => (bool) get_config('block_ahotts_embhl', 'pipervoicechooser'),
+                'voices' => \block_ahotts_embhl\local\languages::pockettts_voices($codes),
+                'orturl' => trim((string) get_config('block_ahotts_embhl', 'pocketttsort')),
+                'wasmpath' => trim((string) get_config('block_ahotts_embhl', 'pocketttswasmpath')),
+                'generatorurl' => (new moodle_url('/blocks/ahotts_embhl/js/pockettts/generator.js'))->out(false),
+                'decoderurl' => (new moodle_url('/blocks/ahotts_embhl/js/pockettts/decoder.js'))->out(false),
+            ];
+        }
+
         // Cross-origin SCORM packages can only be read when they ship the
         // cooperative bridge and their origin is on the administrator's list.
         $jsconfig['bridge'] = [
@@ -169,25 +191,40 @@ class block_ahotts_embhl extends block_base {
 
         // Messages announced through the block's aria-live status line.
         $jsconfig['status'] = [
+            'externalhosted' => get_string('status_externalhosted', 'block_ahotts_embhl'),
             'externalnobridge' => get_string('status_externalnobridge', 'block_ahotts_embhl'),
             'nocontent' => get_string('status_nocontent', 'block_ahotts_embhl'),
             'preparingvoice' => get_string('status_preparingvoice', 'block_ahotts_embhl'),
+            'preparingvoiceprogress' => get_string('status_preparingvoiceprogress', 'block_ahotts_embhl'),
             'voicefallback' => get_string('status_voicefallback', 'block_ahotts_embhl'),
             'downloadunavailable' => get_string('status_downloadunavailable', 'block_ahotts_embhl'),
             'downloadprogress' => get_string('status_downloadprogress', 'block_ahotts_embhl'),
             'downloadready' => get_string('status_downloadready', 'block_ahotts_embhl'),
             'downloaderror' => get_string('status_downloaderror', 'block_ahotts_embhl'),
             'downloadcancelled' => get_string('status_downloadcancelled', 'block_ahotts_embhl'),
-            'pdfreading' => get_string('status_pdfreading', 'block_ahotts_embhl'),
+            'readingactivity' => get_string('status_readingactivity', 'block_ahotts_embhl'),
             'pdfnotfound' => get_string('status_pdfnotfound', 'block_ahotts_embhl'),
             'pdferror' => get_string('status_pdferror', 'block_ahotts_embhl'),
             'pdfdownloadstarted' => get_string('status_pdfdownloadstarted', 'block_ahotts_embhl'),
+            'pdfgenerating' => get_string('status_pdfgenerating', 'block_ahotts_embhl'),
             'enginesunavailable' => get_string('status_enginesunavailable', 'block_ahotts_embhl'),
         ];
 
         $this->page->requires->js_call_amd('block_ahotts_embhl/speech', 'init', [$jsconfig]);
 
         return $this->content;
+    }
+
+    /**
+     * URL of the MP3 encoder worker, versioned so browsers drop old copies.
+     *
+     * @return array
+     */
+    private static function exporter_urls(): array {
+        $version = ['v' => (string) get_config('block_ahotts_embhl', 'version')];
+        return [
+            'mp3worker' => (new moodle_url('/blocks/ahotts_embhl/js/mp3-worker.js', $version))->out(false),
+        ];
     }
 
     public function instance_allow_config() {

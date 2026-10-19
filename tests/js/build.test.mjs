@@ -11,6 +11,8 @@ const read = (name) => fs.readFileSync(new URL(`../../${name}`, import.meta.url)
 
 const speechBuild = read('amd/build/speech.min.js');
 const piperBuild = read('amd/build/piper.min.js');
+const pocketBuild = read('amd/build/pockettts.min.js');
+const pocketSource = read('amd/src/pockettts.js');
 const speechSource = read('amd/src/speech.js');
 const piperSource = read('amd/src/piper.js');
 
@@ -41,6 +43,7 @@ const loadBuild = () => {
     };
 
     dom.window.eval(piperBuild);
+    dom.window.eval(pocketBuild);
     dom.window.eval(speechBuild);
     return modules;
 };
@@ -49,9 +52,11 @@ test('the builds declare the module ids Moodle asks for', () => {
     const modules = loadBuild();
     assert.deepEqual(Object.keys(modules).sort(), [
         'block_ahotts_embhl/piper',
+        'block_ahotts_embhl/pockettts',
         'block_ahotts_embhl/speech',
     ]);
-    assert.deepEqual(modules['block_ahotts_embhl/speech'].dependencies, ['exports', './piper']);
+    assert.deepEqual(modules['block_ahotts_embhl/speech'].dependencies, ['exports', './piper', './pockettts']);
+    assert.deepEqual(modules['block_ahotts_embhl/pockettts'].dependencies, ['exports', './piper']);
 });
 
 test('the speech build exports init and works', () => {
@@ -97,6 +102,15 @@ test('the builds are up to date with the sources', () => {
             `${name} is missing from amd/build/piper.min.js`
         );
     });
+
+    // And every value pockettts.js exports.
+    [...pocketSource.matchAll(/^export const (\w+)/gm)].map((m) => m[1]).forEach((name) => {
+        assert.ok(
+            name in modules['block_ahotts_embhl/pockettts'].exports,
+            `${name} is missing from amd/build/pockettts.min.js`
+        );
+    });
+    assert.match(speechBuild, /prepareFile/, 'the speech build knows the Pocket TTS export path');
 
     assert.match(speechBuild, /ahotts-download/, 'the build contains the audio download control');
     assert.match(speechBuild, /ahotts-scorm-bridge/, 'the build contains the bridge protocol');

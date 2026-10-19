@@ -26,7 +26,7 @@ require_once(__DIR__ . '/../../../lib/clilib.php');
     'language' => false,
     'language-map' => false,
     'scorm-current-window' => false,
-    'expected-site' => 'https://ikastaroak.birt.eus',
+    'expected-site' => 'https://aurrekoikastaroak.birt.eus',
 ], ['h' => 'help']);
 
 if ($options['help']) {
@@ -135,7 +135,7 @@ foreach ([24203 => 'en', 16055 => 'es', 23945 => 'eu'] as $cmid => $expectedlang
     block_ahotts_embhl_report(['type' => 'reference', 'cmid' => $cmid,
         'user_language' => $expectedlanguage, 'record' => $reference ?: null]);
     // These references were explicitly identified by the user on this site only.
-    if ($reference && rtrim($CFG->wwwroot, '/') === 'https://ikastaroak.birt.eus') {
+    if ($reference && rtrim($CFG->wwwroot, '/') === 'https://aurrekoikastaroak.birt.eus') {
         $referencelanguages[$reference->course][$expectedlanguage] = true;
     }
 }

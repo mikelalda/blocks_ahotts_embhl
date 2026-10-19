@@ -21,6 +21,8 @@
  * while the current one plays, which is what makes playback feel immediate.
  *
  * Each language is spoken by the first engine that works for it:
+ *   - a neural Pocket TTS voice running locally in the browser (see
+ *     ./pockettts), where one is published for that language (Basque);
  *   - a Piper voice running locally in the browser (see ./piper), where one is
  *     published for that language;
  *   - the browser's own Web Speech API behind it, except for Basque, which no
@@ -44,7 +46,8 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-import {createPiperEngine, encodeWav} from './piper';
+import {createAudioSink, createPiperEngine, toPcm16} from './piper';
+import {createPocketTtsEngine, unlockAudio} from './pockettts';
 
 const STATE_IDLE = 'idle';
 const STATE_PLAYING = 'playing';
@@ -53,6 +56,12 @@ const STATE_PAUSED = 'paused';
 // Target size (characters) for each synthesised chunk. Small chunks start
 // playing sooner, which is what makes playback feel real-time.
 const CHUNK_TARGET = 160;
+
+// Sample rate of exported audio: the rate the Piper voices speak at.
+const EXPORT_SAMPLE_RATE = 22050;
+
+// Silence between two fragments of an exported file.
+const FRAGMENT_GAP_SECONDS = 0.15;
 
 // Block-level tags whose text is read as a unit (one "line").
 const BLOCK_SELECTOR = 'p,li,h1,h2,h3,h4,h5,h6,td,th,dd,dt,blockquote,figcaption,caption,pre';
@@ -93,7 +102,9 @@ const PROTOCOL_VERSION = 1;
 // Chunk ids accepted from a bridge.
 const CHUNK_ID_PATTERN = /^c[0-9]{1,9}$/;
 
-let pdfJsLoading = null;
+// Hosts of vendor-hosted course content, e.g. Articulate Rise packages exported
+// with remote content: the SCORM only holds a frame pointing at Articulate.
+const VENDOR_HOSTED_PATTERN = /(^|\.)(articulateusercontent\.com|articulate\.com)$/i;
 
 /**
  * Whether the browser supports the Web Speech API.
@@ -141,6 +152,25 @@ const parseOrigin = (url) => {
         return parsed.origin;
     } catch (e) {
         return '';
+    }
+};
+
+/**
+ * Whether a frame shows content hosted by the authoring tool's vendor, which can
+ * never be read: the package has to be exported again with local content.
+ *
+ * @param {HTMLIFrameElement} frame
+ * @return {Boolean}
+ */
+const isVendorHosted = (frame) => {
+    const origin = parseOrigin(frame && frame.getAttribute && frame.getAttribute('src'));
+    if (!origin) {
+        return false;
+    }
+    try {
+        return VENDOR_HOSTED_PATTERN.test(new URL(origin).hostname);
+    } catch (e) {
+        return false;
     }
 };
 
@@ -230,90 +260,6 @@ const splitText = (raw) => {
         }
     });
     return out;
-};
-
-/**
- * Load the locally hosted PDF.js build once.
- *
- * @param {Object} config
- * @return {Promise<Object>}
- */
-const loadPdfJs = (config) => {
-    if (window.pdfjsLib) {
-        window.pdfjsLib.GlobalWorkerOptions.workerSrc = config.pdfjs.worker;
-        return Promise.resolve(window.pdfjsLib);
-    }
-    if (!pdfJsLoading) {
-        pdfJsLoading = new Promise((resolve, reject) => {
-            const script = document.createElement('script');
-            script.type = 'module';
-            script.src = config.pdfjs.library;
-            script.onload = () => {
-                if (!window.pdfjsLib) {
-                    reject(new Error('PDF.js did not initialize'));
-                    return;
-                }
-                resolve(window.pdfjsLib);
-            };
-            script.onerror = () => reject(new Error('PDF.js could not be loaded'));
-            document.head.appendChild(script);
-        }).catch((error) => {
-            pdfJsLoading = null;
-            throw error;
-        });
-    }
-    return pdfJsLoading.then((pdfjs) => {
-        pdfjs.GlobalWorkerOptions.workerSrc = config.pdfjs.worker;
-        return pdfjs;
-    });
-};
-
-/**
- * Extract all selectable text from a PDF, in page order.
- *
- * @param {String} url
- * @param {Object} config
- * @return {Promise<Array<String>>}
- */
-const extractPdfChunks = async (url, config, isCancelled = () => false) => {
-    const source = new URL(url, window.location.href);
-    if (source.origin !== window.location.origin) {
-        throw new Error('Only same-origin PDFs can be read');
-    }
-    const pdfjs = await loadPdfJs(config);
-    if (isCancelled()) {
-        return [];
-    }
-    const loadingTask = pdfjs.getDocument({url: source.href, withCredentials: true});
-    const pdf = await loadingTask.promise;
-    const chunks = [];
-    const seen = Object.create(null);
-    try {
-        for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber++) {
-            if (isCancelled()) {
-                break;
-            }
-            /* eslint-disable-next-line no-await-in-loop */
-            const page = await pdf.getPage(pageNumber);
-            /* eslint-disable-next-line no-await-in-loop */
-            const content = await page.getTextContent();
-            if (isCancelled()) {
-                break;
-            }
-            const text = content.items.map((item) => item.str || '').join(' ')
-                .replace(/\s+/g, ' ').trim();
-            splitText(text).forEach((chunk) => {
-                const key = chunk.toLowerCase();
-                if (!seen[key]) {
-                    seen[key] = true;
-                    chunks.push(chunk);
-                }
-            });
-        }
-    } finally {
-        await pdf.destroy();
-    }
-    return chunks;
 };
 
 /**
@@ -941,6 +887,7 @@ const engineFactories = {
     api: apiEngine,
     webspeech: webSpeechEngine,
     piper: createPiperEngine,
+    pockettts: createPocketTtsEngine,
 };
 
 /**
@@ -1065,6 +1012,8 @@ const adaptLegacyConfig = (config) => {
  * @param {String} config.lang      Base code of the language resolved server side.
  * @param {Array}  config.languages [{code, label, bcp47, engines: [{kind, ...}]}], in preference order.
  * @param {Object} [config.piper]   Piper settings {defaults, chooser, voices, backend, orturl, ...}.
+ * @param {Object} [config.pockettts] Pocket TTS settings {defaults, chooser, voices, orturl, wasmpath,
+ *                                  generatorurl, decoderurl}; each voice {id, label, language, baseurl, voiceurl}.
  * @param {Object} [config.bridge]  Cross-origin bridge {enabled, origins, timeout}.
  * @param {Object} [config.status]  Status messages keyed by name.
  * @param {String} [config.prefer]  Legacy single-language shape: 'api' or 'webspeech'.
@@ -1095,16 +1044,26 @@ export const init = (config) => {
     if (!language) {
         return;
     }
-    const piperVoices = piperConfig.voices || [];
-    const piperDefaults = piperConfig.defaults || {};
+    const pocketConfig = config.pockettts || {};
+    // Every local voice, tagged with the engine that speaks it. The neural
+    // voices come first: where a language has both, they are the better ones.
+    const localVoices = (pocketConfig.voices || []).map((voice) => Object.assign({kind: 'pockettts'}, voice))
+        .concat((piperConfig.voices || []).map((voice) => Object.assign({kind: 'piper'}, voice)));
+    const localDefaults = {pockettts: pocketConfig.defaults || {}, piper: piperConfig.defaults || {}};
     // What the reader picked, per language, for as long as the page lives.
     const chosenVoices = {};
 
-    const voicesFor = (code) => piperVoices.filter((voice) => voice.language === code);
+    const entryFor = (code) => config.languages.find((entry) => entry.code === code) || null;
+    const offersKind = (entry, kind) => !!entry && (entry.engines || []).some((spec) => spec.kind === kind);
+
+    // The voices of a language, from the engines it is configured to use.
+    const voicesFor = (code) => localVoices.filter((voice) =>
+        voice.language === code && offersKind(entryFor(code), voice.kind));
 
     /**
      * The voice a language is read with: the reader's own choice, then the
-     * administrator's default, then whatever is published for it.
+     * administrator's default for the first engine of that language, then
+     * whatever is published for it.
      *
      * @param {String} code
      * @return {String}
@@ -1114,15 +1073,40 @@ export const init = (config) => {
             const offered = voicesFor(code);
             const known = (id) => !!id && offered.some((voice) => voice.id === id);
             const stored = readStored(STORAGE_VOICE + ':' + code);
+            const entry = entryFor(code);
+            const preferred = (entry ? entry.engines || [] : [])
+                .filter((spec) => localDefaults[spec.kind])
+                .map((spec) => localDefaults[spec.kind][code])
+                .find(known);
             chosenVoices[code] = (known(stored) && stored)
-                || (known(piperDefaults[code]) && piperDefaults[code])
+                || preferred
                 || (offered.length ? offered[0].id : '');
         }
         return chosenVoices[code];
     };
 
-    const piperVoiceFor = (code) => voicesFor(code).find((voice) => voice.id === voiceIdFor(code)) || null;
-    const usesPiper = (entry) => (entry.engines || []).some((spec) => spec.kind === 'piper');
+    /**
+     * The voice an engine reads a language with: the chosen one when it is
+     * that engine's, otherwise that engine's default, so it can still stand in
+     * for the other.
+     *
+     * @param {String} code
+     * @param {String} kind 'piper' or 'pockettts'.
+     * @return {Object|null}
+     */
+    const voiceFor = (code, kind) => {
+        const offered = voicesFor(code).filter((voice) => voice.kind === kind);
+        return offered.find((voice) => voice.id === voiceIdFor(code))
+            || offered.find((voice) => voice.id === localDefaults[kind][code])
+            || offered[0]
+            || null;
+    };
+
+    const chosenKind = (code) => {
+        const chosen = voicesFor(code).find((voice) => voice.id === voiceIdFor(code));
+        return chosen ? chosen.kind : '';
+    };
+    const usesLocal = (entry) => offersKind(entry, 'piper') || offersKind(entry, 'pockettts');
 
     /**
      * Whether an engine could be built at all, without building it.
@@ -1139,9 +1123,14 @@ export const init = (config) => {
             return !!spec.url;
         }
         if (spec.kind === 'piper') {
-            const voice = piperVoiceFor(entry.code);
+            const voice = voiceFor(entry.code, 'piper');
             return !!(voice && voice.modelurl && piperConfig.orturl
                 && piperConfig.phonemizerurl && piperConfig.loaderurl);
+        }
+        if (spec.kind === 'pockettts') {
+            const voice = voiceFor(entry.code, 'pockettts');
+            return !!(voice && voice.voiceurl && (voice.baseurl || pocketConfig.baseurl)
+                && pocketConfig.orturl && pocketConfig.generatorurl && pocketConfig.decoderurl);
         }
         return false;
     };
@@ -1165,8 +1154,20 @@ export const init = (config) => {
         if (spec.kind === 'api') {
             return engineFactories.api(spec);
         }
+        if (spec.kind === 'pockettts') {
+            const voice = voiceFor(entry.code, 'pockettts');
+            return engineFactories.pockettts({
+                baseurl: voice.baseurl || pocketConfig.baseurl,
+                voiceurl: voice.voiceurl,
+                orturl: pocketConfig.orturl,
+                wasmpath: pocketConfig.wasmpath || '',
+                generatorurl: pocketConfig.generatorurl,
+                decoderurl: pocketConfig.decoderurl,
+                language: entry.code,
+            });
+        }
         if (spec.kind === 'piper') {
-            const voice = piperVoiceFor(entry.code);
+            const voice = voiceFor(entry.code, 'piper');
             return engineFactories.piper({
                 modelurl: voice.modelurl,
                 configurl: voice.configurl || '',
@@ -1182,15 +1183,22 @@ export const init = (config) => {
         return null;
     };
 
-    // A Piper voice downloads a model and opens an inference session, so engines
-    // are built once and kept, one per language, kind and voice.
+    // A local voice downloads a model and opens an inference session, so engines
+    // are built once and kept: one per language, kind and voice for Piper, whose
+    // voices are separate models, and one per language for Pocket TTS, whose
+    // voices share the model and are switched per reading.
     const engines = new Map();
     const engineFor = (spec, entry) => {
-        const key = entry.code + '|' + spec.kind + '|' + (spec.kind === 'piper' ? voiceIdFor(entry.code) : '');
+        const piperVoice = spec.kind === 'piper' ? voiceFor(entry.code, 'piper') : null;
+        const key = entry.code + '|' + spec.kind + '|' + (piperVoice ? piperVoice.id : '');
         if (!engines.has(key)) {
             engines.set(key, buildEngine(spec, entry));
         }
-        return engines.get(key);
+        const engine = engines.get(key);
+        if (spec.kind === 'pockettts' && engine && engine.setVoice) {
+            engine.setVoice(voiceFor(entry.code, 'pockettts').voiceurl);
+        }
+        return engine;
     };
 
     let activeEngine = null;
@@ -1258,21 +1266,30 @@ export const init = (config) => {
      * @return {Promise<Object|null>}
      */
     let engineNotice = '';
+    let engineKind = '';
     const resolveEngine = async (entry, downloadable = false) => {
         engineNotice = '';
+        engineKind = '';
+        // A reader who picked a Piper voice gets it, not the neural one.
+        const skipped = chosenKind(entry.code) === 'piper' ? 'pockettts' : '';
         const specs = (entry.engines || []).filter((spec) =>
-            (!downloadable || spec.kind !== 'webspeech') && couldRun(spec, entry));
+            (!downloadable || spec.kind !== 'webspeech') && spec.kind !== skipped && couldRun(spec, entry));
         for (let i = 0; i < specs.length; i++) {
             const engine = engineFor(specs[i], entry);
             if (!engine) {
                 continue;
             }
+            engineKind = specs[i].kind || '';
             if (!engine.warmup) {
                 return engine;
             }
             setStatus(messages.preparingvoice || '');
+            // The first time, a neural voice downloads its model: say how far along it is.
+            const progress = (fraction) => setStatus(
+                (messages.preparingvoiceprogress || messages.preparingvoice || '')
+                    .replace('{percent}', String(Math.round(fraction * 100))));
             /* eslint-disable-next-line no-await-in-loop */
-            const ready = await engine.warmup();
+            const ready = await engine.warmup(progress);
             if (ready) {
                 setStatus('');
                 return engine;
@@ -1353,16 +1370,15 @@ export const init = (config) => {
         // Each language has its own voices, so the menu is rebuilt whenever the
         // reading language changes, and hidden when there is nothing to choose.
         const offered = voicesFor(language.code);
-        const show = offered.length > 1 && usesPiper(language) && couldRun({kind: 'piper'}, language);
+        const show = offered.length > 1 && usesLocal(language)
+            && (couldRun({kind: 'piper'}, language) || couldRun({kind: 'pockettts'}, language));
         voiceControl.label.hidden = !show;
         voiceControl.select.hidden = !show;
-        if (show) {
-            fillSelect(
-                voiceControl.select,
-                offered.map((voice) => ({value: voice.id, label: voice.label || voice.id})),
-                voiceIdFor(language.code)
-            );
-        }
+        fillSelect(
+            voiceControl.select,
+            offered.map((voice) => ({value: voice.id, label: voice.label || voice.id})),
+            voiceIdFor(language.code)
+        );
     };
 
     if (config.langmode === 'chooser' && config.languages.length > 1) {
@@ -1380,7 +1396,7 @@ export const init = (config) => {
         );
     }
 
-    if (piperConfig.chooser && piperVoices.length > 1) {
+    if ((piperConfig.chooser || pocketConfig.chooser) && localVoices.length > 1) {
         voiceControl = addSelect(
             'ahotts-voice',
             config.labels.voice || '',
@@ -1432,7 +1448,7 @@ export const init = (config) => {
      * @param {Boolean} limited Apply the playback character limit.
      * @return {Promise<Object>}
      */
-    const collectChunks = async (limited = true, pdfOnly = false) => {
+    const collectChunks = async (limited = true) => {
         const root = document.getElementById(config.readid) || document.body;
         const items = [];
         collectFrom(root, items, {
@@ -1442,8 +1458,8 @@ export const init = (config) => {
         });
 
         // Start every handshake at once, then keep the reading order.
-        const frames = pdfOnly ? [] : items.filter((item) => item.kind === 'frame');
-        let blocked = pdfOnly ? items.filter((item) => item.kind === 'frame').length : 0;
+        const frames = items.filter((item) => item.kind === 'frame');
+        let blocked = 0;
         const connected = new Map();
         if (frames.length) {
             if (!bridge) {
@@ -1479,15 +1495,6 @@ export const init = (config) => {
         for (let i = 0; i < items.length; i++) {
             const item = items[i];
             if (item.kind === 'pdf') {
-                if (pdfOnly) {
-                    setStatus(messages.pdfreading || '');
-                    /* eslint-disable-next-line no-await-in-loop */
-                    const pdfChunks = await extractPdfChunks(item.url, config, () => stopped);
-                    pdfChunks.forEach((text) => push({kind: 'local', text: text}));
-                }
-                continue;
-            }
-            if (pdfOnly) {
                 continue;
             }
             if (item.kind === 'local') {
@@ -1505,10 +1512,84 @@ export const init = (config) => {
             });
         }
 
-        return {chunks: chunks, blocked: blocked};
+        // Frames we could not read that point at vendor hosting get their own notice.
+        const hosted = frames.filter((item) => !connected.has(item.frame) && isVendorHosted(item.frame)).length;
+
+        return {chunks: chunks, blocked: blocked, hosted: hosted};
     };
 
+    const blockedNotice = (collected) => (collected.hosted ? messages.externalhosted : messages.externalnobridge) || '';
+
     let downloadButtons = [];
+    // The server lists the SCORM package PDFs best first (the one it builds from
+    // the package, then those the package ships); only same-origin ones are usable.
+    const packagePdf = (config.packagepdfs || []).find((pdf) => {
+        try {
+            return pdf && pdf.url && new URL(pdf.url, window.location.href).origin === window.location.origin;
+        } catch (e) {
+            return false;
+        }
+    }) || null;
+    // On a SCORM package or a book, where the whole activity is read from for audio exports.
+    const courseText = config.texturl || '';
+
+    /**
+     * Tell the server how an audio export went: it runs in the browser, and
+     * would otherwise leave no trace when it fails.
+     *
+     * @param {String} event exportstart, exportdone, exporterror, exportcancel, exportempty or exportnoengine.
+     * @param {String} detail
+     */
+    const report = (event, detail) => {
+        if (!config.logurl) {
+            return;
+        }
+        try {
+            const body = new URLSearchParams({
+                sesskey: config.sesskey || '',
+                cmid: String(config.cmid || 0),
+                event: event,
+                detail: String(detail || '').slice(0, 800),
+            });
+            if (navigator.sendBeacon) {
+                navigator.sendBeacon(config.logurl, body);
+            } else {
+                fetch(config.logurl, {method: 'POST', body: body, credentials: 'same-origin'}).catch(() => {});
+            }
+        } catch (e) {
+            // Reporting must never break the export.
+        }
+    };
+
+    /**
+     * The text of the whole SCORM course, read by the server from the package.
+     *
+     * @return {Promise<Object|null>} {chunks, blocked}, or null to fall back to the screen.
+     */
+    const collectCourseText = async () => {
+        setStatus(messages.readingactivity || '');
+        try {
+            const response = await fetch(courseText, {credentials: 'same-origin'});
+            if (!response.ok) {
+                return null;
+            }
+            const data = await response.json();
+            const chunks = [];
+            const seen = Object.create(null);
+            (data.paragraphs || []).forEach((paragraph) => {
+                splitText(String(paragraph)).forEach((text) => {
+                    const key = text.toLowerCase();
+                    if (!seen[key]) {
+                        seen[key] = true;
+                        chunks.push({kind: 'local', text: text});
+                    }
+                });
+            });
+            return chunks.length ? {chunks: chunks, blocked: 0} : null;
+        } catch (e) {
+            return null;
+        }
+    };
 
     const finish = () => {
         unhighlightChunk(currentChunk);
@@ -1547,7 +1628,7 @@ export const init = (config) => {
         if (collected.blocked) {
             // The page holds an external frame we are not allowed to read: say so
             // rather than silently skipping part of the content.
-            notices.push(messages.externalnobridge || '');
+            notices.push(blockedNotice(collected));
         }
         if (!chunks.length && !collected.blocked) {
             notices.push(messages.nocontent || '');
@@ -1619,24 +1700,19 @@ export const init = (config) => {
     downloadButton.className = 'ahotts-download btn btn-secondary btn-sm mt-1';
     downloadButton.textContent = config.labels.download || '';
     controls.appendChild(downloadButton);
-    const pdfDownloadButton = document.createElement('button');
-    pdfDownloadButton.type = 'button';
-    pdfDownloadButton.className = 'ahotts-download-pdf-audio btn btn-secondary btn-sm mt-1';
-    pdfDownloadButton.textContent = config.labels.downloadpdfaudio || '';
-    controls.appendChild(pdfDownloadButton);
     const pdfFileDownloadButton = document.createElement('button');
     pdfFileDownloadButton.type = 'button';
     pdfFileDownloadButton.className = 'ahotts-download-pdf-file btn btn-secondary btn-sm mt-1';
     pdfFileDownloadButton.textContent = config.labels.downloadpdffile || '';
     controls.appendChild(pdfFileDownloadButton);
-    downloadButtons = [downloadButton, pdfDownloadButton, pdfFileDownloadButton];
+    downloadButtons = [downloadButton, pdfFileDownloadButton];
     const saveLink = document.createElement('a');
     saveLink.className = 'ahotts-save btn btn-link btn-sm';
     saveLink.textContent = config.labels.saveaudio || '';
     saveLink.hidden = true;
     controls.appendChild(saveLink);
 
-    const startDownload = async (pdfOnly) => {
+    const startDownload = async () => {
         if (downloading || state !== STATE_IDLE) {
             return;
         }
@@ -1651,43 +1727,67 @@ export const init = (config) => {
             downloadUrl = null;
         }
         let context = null;
+        let sink = null;
+        let current = 0;
+        let total = 0;
+        const started = Date.now();
+        const seconds = () => Math.round((Date.now() - started) / 1000);
+        const progress = (count) => setStatus((messages.downloadprogress || '')
+            .replace('{current}', count).replace('{total}', total));
         try {
-            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-            if (!AudioContextClass) {
-                throw new Error('Audio decoding unavailable');
-            }
-            context = new AudioContextClass();
             const engine = await resolveEngine(language, true);
             if (stopped) {
                 return;
             }
             if (!engine) {
+                report('exportnoengine', 'language=' + language.code);
                 setStatus(messages.downloadunavailable || '');
                 return;
             }
-            // Exports bypass the playback cap; the PDF option collects every page.
-            const collected = await collectChunks(false, pdfOnly);
+            // Exports bypass the playback cap. A SCORM package or a book is read
+            // whole, from the server; anything else as the screen shows it.
+            const course = courseText ? await collectCourseText() : null;
+            const collected = course || await collectChunks(false);
             if (stopped) {
                 return;
             }
-            if (!collected.chunks.length) {
-                setStatus(pdfOnly ? (messages.pdfnotfound || '')
-                    : (collected.blocked ? messages.externalnobridge : messages.nocontent));
+            const texts = collected.chunks.map((chunk) => chunk.text);
+            total = texts.length;
+            if (!total) {
+                report('exportempty', 'blocked=' + collected.blocked);
+                setStatus(collected.blocked ? blockedNotice(collected) : messages.nocontent);
                 return;
             }
-            const parts = [];
-            let length = 0;
-            for (let i = 0; i < collected.chunks.length; i++) {
+
+            sink = createAudioSink((config.exporter && config.exporter.mp3worker) || '');
+            report('exportstart', 'source=' + (course ? 'activity' : 'screen') + ' engine=' + engineKind
+                + ' language=' + language.code + ' fragments=' + total
+                + ' characters=' + texts.reduce((sum, text) => sum + text.length, 0));
+
+            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+            if (!AudioContextClass) {
+                throw new Error('Audio decoding unavailable');
+            }
+            // Piper speaks at 22050 Hz: decoding at that rate, rather than the
+            // sound card's, keeps a long course within the browser's memory.
+            try {
+                context = new AudioContextClass({sampleRate: EXPORT_SAMPLE_RATE});
+            } catch (e) {
+                context = new AudioContextClass();
+            }
+            await sink.open(context.sampleRate);
+            for (let i = 0; i < total; i++) {
+                current = i + 1;
                 if (stopped) {
                     return;
                 }
-                setStatus((messages.downloadprogress || '')
-                    .replace('{current}', i + 1).replace('{total}', collected.chunks.length));
+                progress(i + 1);
                 let token = null;
                 try {
                     // Process one fragment at a time and release its URL promptly.
                     /* eslint-disable-next-line no-await-in-loop */
-                    token = await engine.prepare(collected.chunks[i].text);
+                    // An engine that streams its playback has a separate call for a whole file.
+                    token = await (engine.prepareFile ? engine.prepareFile(texts[i]) : engine.prepare(texts[i]));
                     if (stopped) {
                         return;
                     }
@@ -1708,13 +1808,10 @@ export const init = (config) => {
                             samples[j] += data[j] / buffer.numberOfChannels;
                         }
                     }
-                    if (parts.length) {
-                        const gap = new Float32Array(Math.round(context.sampleRate * 0.15));
-                        parts.push(gap);
-                        length += gap.length;
+                    if (i > 0) {
+                        sink.write(new Int16Array(Math.round(context.sampleRate * FRAGMENT_GAP_SECONDS)));
                     }
-                    parts.push(samples);
-                    length += samples.length;
+                    sink.write(toPcm16(samples));
                 } finally {
                     if (token !== null) {
                         engine.release(token);
@@ -1724,29 +1821,35 @@ export const init = (config) => {
             if (stopped) {
                 return;
             }
-            const samples = new Float32Array(length);
-            let offset = 0;
-            parts.forEach((part) => {
-                samples.set(part, offset);
-                offset += part.length;
-            });
-            downloadUrl = URL.createObjectURL(encodeWav(samples, context.sampleRate));
+            const file = await sink.finish();
+            downloadUrl = URL.createObjectURL(file);
             const title = (document.title || 'audio').replace(/[^\p{L}\p{N}_-]+/gu, '-').slice(0, 80) || 'audio';
             saveLink.href = downloadUrl;
-            saveLink.download = title + (pdfOnly ? '-pdf' : '') + '-' + language.code + '.wav';
+            saveLink.download = title + '-' + language.code + '.' + sink.format;
             saveLink.hidden = false;
-            setStatus([messages.downloadready, collected.blocked ? messages.externalnobridge : '']
+            setStatus([messages.downloadready, collected.blocked ? blockedNotice(collected) : '']
                 .filter(Boolean).join(' '));
+            report('exportdone', 'fragments=' + total + ' format=' + sink.format
+                + ' seconds=' + seconds() + ' bytes=' + file.size);
             saveLink.click();
         } catch (error) {
+            if (sink) {
+                sink.abort();
+            }
+            const reason = ((error && error.name) || 'Error') + ': ' + ((error && error.message) || error);
             if (!stopped) {
-                setStatus(pdfOnly ? (messages.pdferror || '') : (messages.downloaderror || ''));
+                report('exporterror', 'fragment ' + current + '/' + total + ' after ' + seconds() + 's ' + reason);
+                setStatus((messages.downloaderror || '') + ' (' + reason + ')');
             }
         } finally {
             if (context) {
                 await context.close().catch(() => {});
             }
             if (stopped) {
+                if (sink) {
+                    sink.abort();
+                }
+                report('exportcancel', 'fragment ' + current + '/' + total + ' after ' + seconds() + 's');
                 setStatus(messages.downloadcancelled || '');
             }
             downloading = false;
@@ -1756,33 +1859,84 @@ export const init = (config) => {
         }
     };
 
-    downloadButton.addEventListener('click', () => startDownload(false));
-    pdfDownloadButton.addEventListener('click', () => startDownload(true));
+    downloadButton.addEventListener('click', () => startDownload());
+    /**
+     * Save a URL under a file name through a temporary link.
+     *
+     * @param {String} href
+     * @param {String} name
+     */
+    const saveAs = (href, name) => {
+        const filename = (name || '').replace(/[^\p{L}\p{N}._-]+/gu, '-') || 'document.pdf';
+        const anchor = document.createElement('a');
+        anchor.href = href;
+        anchor.download = /\.pdf$/i.test(filename) ? filename : filename + '.pdf';
+        anchor.hidden = true;
+        document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+    };
+
+    /**
+     * Fetch the PDF the server builds from the SCORM package, then save it. The
+     * first request of a new package version waits for the build, and an error
+     * page must never be saved as a PDF.
+     *
+     * @param {Object} pdf {url, filename}
+     */
+    const saveGeneratedPdf = async (pdf) => {
+        downloading = true;
+        downloadButtons.forEach((button) => { button.disabled = true; });
+        setStatus(messages.pdfgenerating || '');
+        try {
+            const response = await fetch(pdf.url, {credentials: 'same-origin'});
+            const type = (response.headers && response.headers.get('Content-Type')) || '';
+            if (!response.ok || !/application\/pdf/i.test(type)) {
+                // The server explains in plain text why there is no PDF.
+                const reason = /text\/plain/i.test(type) ? (await response.text()).trim() : '';
+                setStatus(reason || messages.pdferror || '');
+                return;
+            }
+            const href = URL.createObjectURL(await response.blob());
+            saveAs(href, pdf.filename);
+            // Give the browser time to start the download before releasing it.
+            setTimeout(() => URL.revokeObjectURL(href), 60000);
+            setStatus(messages.pdfdownloadstarted || '');
+        } catch (e) {
+            setStatus(messages.pdferror || '');
+        } finally {
+            downloading = false;
+            downloadButtons.forEach((button) => { button.disabled = false; });
+        }
+    };
+
     pdfFileDownloadButton.addEventListener('click', () => {
         if (downloading || state !== STATE_IDLE) {
             return;
         }
         const pdfUrls = collectPdfUrls(document, config.readid);
-        const pdfUrl = pdfUrls.find((url) => {
+        const embeddedUrl = pdfUrls.find((url) => {
             try {
                 return new URL(url).origin === window.location.origin;
             } catch (e) {
                 return false;
             }
         });
-        if (!pdfUrl) {
+        if (embeddedUrl) {
+            saveAs(embeddedUrl, decodeURIComponent(new URL(embeddedUrl).pathname.split('/').pop() || ''));
+            setStatus(messages.pdfdownloadstarted || '');
+            return;
+        }
+        // Otherwise the PDF of the SCORM package: built from it, or shipped with it.
+        if (!packagePdf) {
             setStatus(messages.pdfnotfound || '');
             return;
         }
-        const filename = decodeURIComponent(new URL(pdfUrl).pathname.split('/').pop() || '')
-            .replace(/[^\p{L}\p{N}._-]+/gu, '-') || 'document.pdf';
-        const anchor = document.createElement('a');
-        anchor.href = pdfUrl;
-        anchor.download = /\.pdf$/i.test(filename) ? filename : filename + '.pdf';
-        anchor.hidden = true;
-        document.body.appendChild(anchor);
-        anchor.click();
-        anchor.remove();
+        if (packagePdf.generated) {
+            saveGeneratedPdf(packagePdf);
+            return;
+        }
+        saveAs(packagePdf.url, packagePdf.filename);
         setStatus(messages.pdfdownloadstarted || '');
     });
 
@@ -1790,6 +1944,10 @@ export const init = (config) => {
         e.preventDefault();
         if (downloading) {
             return;
+        }
+        // Web Audio may only start inside the click itself (Safari).
+        if (localVoices.some((voice) => voice.kind === 'pockettts')) {
+            unlockAudio();
         }
         if (state === STATE_IDLE) {
             state = STATE_PLAYING;
@@ -1842,6 +2000,7 @@ export const __testing = {
     engineFactories,
     highlight,
     adaptLegacyConfig,
+    isVendorHosted,
     isVisible,
     normaliseLanguage,
     originAllowed,

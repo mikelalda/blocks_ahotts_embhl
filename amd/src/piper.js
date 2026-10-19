@@ -56,11 +56,6 @@ const ESPEAK_OUTPUT = 'phonemes';
 // in use really carries the voice's language.
 const LANGUAGE_PROBE = 'kaixo';
 
-// Piper receives each eSpeak clause separately. Leave a short silence between
-// them so punctuation such as a comma is audible instead of being flattened
-// into an ordinary space.
-const CLAUSE_PAUSE_SECONDS = 0.18;
-
 /**
  * Turn a string of IPA phonemes into the id sequence a Piper model expects.
  *
@@ -99,16 +94,14 @@ export const phonemesToIds = (phonemes, idmap) => {
 };
 
 /**
- * Wrap a mono float waveform in a 16 bit PCM WAV container.
+ * Header of a mono 16-bit PCM WAV file.
  *
- * @param {Float32Array|Array<Number>} samples
+ * @param {Number} length Number of samples.
  * @param {Number} samplerate
- * @return {Blob}
+ * @return {ArrayBuffer} The 44 header bytes.
  */
-export const encodeWav = (samples, samplerate) => {
-    const length = samples.length;
-    const buffer = new ArrayBuffer(44 + (length * 2));
-    const view = new DataView(buffer);
+export const wavHeader = (length, samplerate) => {
+    const view = new DataView(new ArrayBuffer(44));
     const writeText = (offset, text) => {
         for (let i = 0; i < text.length; i++) {
             view.setUint8(offset + i, text.charCodeAt(i));
@@ -128,16 +121,33 @@ export const encodeWav = (samples, samplerate) => {
     view.setUint16(34, 16, true);       // Bits per sample.
     writeText(36, 'data');
     view.setUint32(40, length * 2, true);
-
-    let offset = 44;
-    for (let i = 0; i < length; i++) {
-        const sample = Math.max(-1, Math.min(1, samples[i]));
-        view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
-        offset += 2;
-    }
-
-    return new Blob([view], {type: 'audio/wav'});
+    return view.buffer;
 };
+
+/**
+ * Convert float samples to 16-bit PCM.
+ *
+ * @param {Float32Array} samples
+ * @return {Int16Array}
+ */
+export const toPcm16 = (samples) => {
+    const pcm = new Int16Array(samples.length);
+    for (let i = 0; i < samples.length; i++) {
+        const sample = Math.max(-1, Math.min(1, samples[i]));
+        pcm[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
+    }
+    return pcm;
+};
+
+/**
+ * Encode float samples as a mono 16-bit PCM WAV file.
+ *
+ * @param {Float32Array} samples
+ * @param {Number} samplerate
+ * @return {Blob}
+ */
+export const encodeWav = (samples, samplerate) =>
+    new Blob([wavHeader(samples.length, samplerate), toPcm16(samples)], {type: 'audio/wav'});
 
 /**
  * Load a classic script once, resolving when it has run.
@@ -462,10 +472,13 @@ export const createPiperEngine = (config, deps) => {
      * Run the model over one chunk of text.
      *
      * @param {String} text
-     * @return {Promise<String>} Object URL of the resulting WAV.
+     * @return {Promise<Object>} {samples: Float32Array, samplerate: Number}
      */
-    const synthesise = async (text) => {
+    const synthesiseSamples = async (text) => {
         const phonemes = await phonemize(text, voiceLanguage());
+        // eSpeak writes one line per clause. They go to the model as a single
+        // utterance, so the voice keeps its own rhythm and intonation instead of
+        // having silences inserted between clauses.
         const clauses = (Array.isArray(phonemes) ? phonemes : [phonemes])
             .map((clause) => String(clause || '').trim())
             .filter(Boolean);
@@ -473,48 +486,44 @@ export const createPiperEngine = (config, deps) => {
             throw new Error('Nothing to synthesise');
         }
 
-        const inference = voice.inference || {};
-        const samplerate = (voice.audio && voice.audio.sample_rate) || 22050;
-        const pause = new Float32Array(Math.round(samplerate * CLAUSE_PAUSE_SECONDS));
-        const waveforms = [];
-
-        for (let i = 0; i < clauses.length; i++) {
-            const ids = phonemesToIds(clauses[i], voice.phoneme_id_map);
-            if (ids.length <= 3) {
-                continue;
-            }
-            const feeds = {
-                input: new ort.Tensor('int64', BigInt64Array.from(ids, (id) => BigInt(id)), [1, ids.length]),
-                input_lengths: new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)])),
-                scales: new ort.Tensor('float32', Float32Array.from([
-                    typeof inference.noise_scale === 'number' ? inference.noise_scale : 0.667,
-                    typeof inference.length_scale === 'number' ? inference.length_scale : 1,
-                    typeof inference.noise_w === 'number' ? inference.noise_w : 0.8,
-                ])),
-            };
-            if (voice.speaker_id_map && Object.keys(voice.speaker_id_map).length) {
-                feeds.sid = new ort.Tensor('int64', BigInt64Array.from([BigInt(config.speaker || 0)]));
-            }
-
-            const results = await session.run(feeds);
-            const output = results.output || results[Object.keys(results)[0]];
-            if (waveforms.length) {
-                waveforms.push(pause);
-            }
-            waveforms.push(output.data);
-        }
-
-        if (!waveforms.length) {
+        const ids = phonemesToIds(clauses.join(' '), voice.phoneme_id_map);
+        if (ids.length <= 3) {
             throw new Error('Nothing to synthesise');
         }
-        const length = waveforms.reduce((total, samples) => total + samples.length, 0);
-        const combined = new Float32Array(length);
-        let offset = 0;
-        waveforms.forEach((samples) => {
-            combined.set(samples, offset);
-            offset += samples.length;
-        });
-        return URL.createObjectURL(encodeWav(combined, samplerate));
+
+        const inference = voice.inference || {};
+        const feeds = {
+            input: new ort.Tensor('int64', BigInt64Array.from(ids, (id) => BigInt(id)), [1, ids.length]),
+            input_lengths: new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)])),
+            scales: new ort.Tensor('float32', Float32Array.from([
+                typeof inference.noise_scale === 'number' ? inference.noise_scale : 0.667,
+                typeof inference.length_scale === 'number' ? inference.length_scale : 1,
+                typeof inference.noise_w === 'number' ? inference.noise_w : 0.8,
+            ])),
+        };
+        if (voice.speaker_id_map && Object.keys(voice.speaker_id_map).length) {
+            feeds.sid = new ort.Tensor('int64', BigInt64Array.from([BigInt(config.speaker || 0)]));
+        }
+
+        const results = await session.run(feeds);
+        const output = results.output || results[Object.keys(results)[0]];
+        return {
+            samples: Float32Array.from(output.data),
+            samplerate: (voice.audio && voice.audio.sample_rate) || 22050,
+        };
+    };
+
+    /**
+     * Queue a run of the model: one inference at a time per engine.
+     *
+     * @param {String} text
+     * @return {Promise<Object>} {samples, samplerate}
+     */
+    const enqueue = (text) => {
+        const run = queue.then(() => synthesiseSamples(text));
+        // Keep the queue alive even when one chunk fails.
+        queue = run.catch(() => null);
+        return run;
     };
 
     return {
@@ -539,12 +548,8 @@ export const createPiperEngine = (config, deps) => {
             return starting.then((ok) => ok !== false);
         },
 
-        prepare: (text) => {
-            const run = queue.then(() => synthesise(text));
-            // Keep the queue alive even when one chunk fails.
-            queue = run.catch(() => null);
-            return run;
-        },
+        prepare: (text) => enqueue(text).then((result) =>
+            URL.createObjectURL(encodeWav(result.samples, result.samplerate))),
 
         play: (url) => new Promise((resolve) => {
             audio = new Audio(url);
@@ -588,4 +593,136 @@ export const createPiperEngine = (config, deps) => {
 
         release: (url) => URL.revokeObjectURL(url),
     };
+};
+
+/**
+ * Where an export writes its audio, fragment after fragment: an MP3 encoded in
+ * a Web Worker as it goes, or a WAV when that worker cannot start.
+ *
+ * @param {String} mp3url URL of js/mp3-worker.js; empty for WAV.
+ * @param {Function} [WorkerClass] Worker constructor, for testing.
+ * @param {Number} [timeout] Milliseconds the encoder may take to start.
+ * @return {Object} {open(samplerate), write(pcm), finish(), abort(), format}
+ */
+export const createAudioSink = (mp3url, WorkerClass = self.Worker, timeout = 15000) => {
+    let worker = null;
+    let samplerate = 0;
+    let failure = null;
+    let finished = null;
+    const parts = [];
+    let length = 0;
+
+    const sink = {
+        format: 'wav',
+
+        /**
+         * Start the encoder; falls back to WAV when it does not answer.
+         *
+         * @param {Number} rate Sample rate of everything that will be written.
+         * @return {Promise}
+         */
+        open: (rate) => {
+            samplerate = rate;
+            if (!mp3url || !WorkerClass) {
+                return Promise.resolve();
+            }
+            return new Promise((resolve) => {
+                let candidate = null;
+                try {
+                    candidate = new WorkerClass(mp3url);
+                } catch (e) {
+                    resolve();
+                    return;
+                }
+                const settle = (ok) => {
+                    clearTimeout(timer);
+                    if (ok) {
+                        worker = candidate;
+                        sink.format = 'mp3';
+                    } else {
+                        candidate.terminate();
+                    }
+                    resolve();
+                };
+                const timer = setTimeout(() => settle(false), timeout);
+                candidate.onmessage = (event) => {
+                    const message = event.data || {};
+                    if (message.type === 'started') {
+                        settle(true);
+                    } else if (message.type === 'done' && finished) {
+                        finished.resolve(message.blob);
+                    } else if (message.type === 'error') {
+                        failure = new Error('MP3 encoder: ' + message.error);
+                        if (finished) {
+                            finished.reject(failure);
+                        }
+                    }
+                };
+                candidate.onerror = (event) => {
+                    if (event && event.preventDefault) {
+                        event.preventDefault();
+                    }
+                    if (worker) {
+                        failure = new Error('MP3 encoder stopped');
+                        if (finished) {
+                            finished.reject(failure);
+                        }
+                    } else {
+                        settle(false);
+                    }
+                };
+                candidate.postMessage({type: 'start', samplerate: rate, kbps: 48});
+            });
+        },
+
+        /**
+         * Append 16-bit samples.
+         *
+         * @param {Int16Array} pcm Handed over: do not use it afterwards.
+         */
+        write: (pcm) => {
+            if (failure) {
+                throw failure;
+            }
+            if (worker) {
+                worker.postMessage({type: 'pcm', pcm: pcm}, [pcm.buffer]);
+            } else {
+                parts.push(pcm);
+                length += pcm.length;
+            }
+        },
+
+        /**
+         * The finished file.
+         *
+         * @return {Promise<Blob>}
+         */
+        finish: () => {
+            if (!worker) {
+                return Promise.resolve(new Blob([wavHeader(length, samplerate)].concat(parts), {type: 'audio/wav'}));
+            }
+            if (failure) {
+                return Promise.reject(failure);
+            }
+            return new Promise((resolve, reject) => {
+                finished = {resolve, reject};
+                worker.postMessage({type: 'end'});
+            }).finally(() => {
+                worker.terminate();
+                worker = null;
+            });
+        },
+
+        /**
+         * Drop everything written so far.
+         */
+        abort: () => {
+            if (worker) {
+                worker.terminate();
+                worker = null;
+            }
+            parts.length = 0;
+        },
+    };
+    return sink;
 };

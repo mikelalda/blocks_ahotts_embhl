@@ -125,3 +125,15 @@ test('underlines the chunk being read and restores the element afterwards', () =
     assert.equal(el.style.textDecoration, 'overline');
     assert.equal(el.dataset.ahottsTextdecoration, undefined);
 });
+
+test('recognises frames that show Articulate-hosted course content', () => {
+    const speech = loadSpeech(page([
+        '<iframe id="hosted" src="https://packages.articulateusercontent.com/content/abc/boot.html#token=x"></iframe>',
+        '<iframe id="other" src="https://scorm.example.org/index.html"></iframe>',
+        '<iframe id="lookalike" src="https://articulateusercontent.com.example.org/index.html"></iframe>',
+    ].join('')));
+    const isHosted = (id) => speech.testing.isVendorHosted(speech.document.getElementById(id));
+    assert.equal(isHosted('hosted'), true);
+    assert.equal(isHosted('other'), false);
+    assert.equal(isHosted('lookalike'), false);
+});

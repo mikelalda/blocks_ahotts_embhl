@@ -46,6 +46,7 @@ $string['scormorigins'] = 'Onartutako SCORM jatorriak';
 $string['scormorigins_help'] = 'Jatorri bat lerro bakoitzeko: eskema, ostalaria eta ataka aukerakoa, biderik gabe; adibidez <code>https://scorm.example.org</code>. Hasierako komodin bat onartzen da (<code>https://*.example.org</code>) eta azpidomeinuak soilik hartzen ditu. Beste jatorri guztien mezuak baztertu egiten dira.';
 $string['scormtimeout'] = 'Zubiaren itxaronaldia (milisegundo)';
 $string['scormtimeout_help'] = 'Kanpoko pakete batek erantzuteko itxaron beharreko denbora, zubirik ez duela erabaki aurretik.';
+$string['status_externalhosted'] = 'Pakete honek egile-tresnaren zerbitzarietatik (Articulate) kargatzen du edukia, eta ezin da ozen irakurri. Orriaren gainerakoa baino ez da irakurriko.';
 $string['status_externalnobridge'] = 'Orri honen zati bat kanpoko edukia da eta ez du irakurtzen uzten. Orriaren gainerakoa baino ez da irakurriko.';
 $string['status_nocontent'] = 'Ez dago testu irakurgarririk orri honetan.';
 
@@ -96,22 +97,47 @@ $string['piperphonemizer_help'] = 'eSpeak NG fonemizatzailearen ES moduluaren UR
 $string['piperphonemizerwasm'] = 'Fonemizatzailearen WebAssembly fitxategia';
 $string['piperphonemizerwasm_help'] = 'Fonemizatzailearen .wasm fitxategiaren URLa. Behin deskargatu eta esaldi bakoitzean berrerabiltzen da, moduluari bakoitzean bilatzen uztea baino askoz azkarragoa dena. Hutsik utzi moduluak berak aurki dezan.';
 
+// Euskarazko ahots neuronal naturalak (Pocket TTS, itzune).
+$string['header_pockettts'] = 'Ahots neuronal naturalak nabigatzailean (Pocket TTS)';
+$string['header_pockettts_help'] = 'Pocket TTS (Kyutai), itzunek euskarara egokitua (<a href="https://huggingface.co/itzune/pocket-tts-basque-onnx">huggingface.co/itzune/pocket-tts-basque-onnx</a>, CC BY 4.0). Piper baino naturalagoa da eta zenbakiak, datak, orduak eta ehunekoak irakurtzen ditu, baina astunagoa da: lehen aldian 125 MB inguru deskargatzen dira eta nabigatzailearen cachean gelditzen dira, eta gailu nahiko berria behar du. Atzeko planoko bi prozesutan exekutatzen da, beraz prozesadorearen bi nukleo erabiltzen ditu. Abiarazi ezin denean, Piper ahotsa erabiltzen da. Kredituak: Kyutai Pocket TTS, HiTZ-Aholab estudioko corpusa (Maider eta Antton) eta BSSD datu-multzoa.';
+$string['pocketttsenabled'] = 'Erabili Pocket TTS ahotsak';
+$string['pocketttsenabled_help'] = 'Euskara Pocket TTS ahotsekin irakurtzen du, Piperren aurretik. Ez da ezer zerbitzari batera bidaltzen.';
+$string['pocketttsvoice_lang'] = '{$a} Pocket TTS ahots lehenetsia';
+$string['pocketttsvoice_help'] = 'Irakurleak beste bat aukeratzen ez duen bitartean erabiliko den ahotsa.';
+$string['pocketttsvoice_maider'] = 'Maider (naturala, emakumezkoa)';
+$string['pocketttsvoice_antton'] = 'Antton (naturala, gizonezkoa)';
+$string['pocketttsvoice_nahia'] = 'Nahia (naturala, emakumezkoa)';
+$string['pocketttsvoice_ane'] = 'Ane (naturala, emakumezkoa)';
+$string['pocketttsvoice_aitor'] = 'Aitor (naturala, gizonezkoa)';
+$string['pocketttsbaseurl'] = '{$a} Pocket TTS modeloaren karpeta';
+$string['pocketttsbaseurl_help'] = 'Modeloaren bundle.json, .onnx fitxategiak, tokenizatzailea eta voices/ karpeta dituen karpeta, amaierako barrarekin. Hutsik utzi argitaratutako modeloa erabiltzeko. Zuk zeuk ostatatzeko, kopiatu flow_lm_main_int8.onnx, flow_lm_flow_int8.onnx, mimi_decoder_int8.onnx, text_conditioner.onnx, bundle.json, vocab.json, token_scores.json eta voices/*.safetensors, eta onartu jatorri arteko irakurketak beste domeinu batean badago.';
+$string['pocketttsort'] = 'Pocket TTSrako ONNX Runtime Web modulua';
+$string['pocketttsort_help'] = 'ONNX Runtime Weben ES modulu bertsioaren URLa (ort.wasm.min.mjs), Pocket TTS prozesuek inportatzen dutena.';
+$string['pocketttswasmpath'] = 'Pocket TTSrako ONNX Runtimeren WebAssembly direktorioa';
+$string['pocketttswasmpath_help'] = 'Bertsio horren .wasm fitxategiak dituen direktorioa, amaierako barrarekin.';
+
 // Erreprodukzioaren egoera.
 $string['status_preparingvoice'] = 'Ahotsa prestatzen. Lehen aldian deskargatu egin behar da.';
+$string['status_preparingvoiceprogress'] = 'Ahotsa deskargatzen (% {percent}). Lehen aldian bakarrik gertatzen da.';
 $string['status_voicefallback'] = 'Ezin izan da nabigatzaileko ahotsa abiarazi; lineako zerbitzua erabiliko da.';
 $string['status_enginesunavailable'] = 'Ez dago ahotsik eskuragarri hizkuntza honetarako nabigatzaile honetan.';
 
 // Offline audio download.
 $string['downloadaudio'] = 'Deskargatu audioa';
-$string['downloadaudiopdf'] = 'Deskargatu PDFaren audioa (WAV)';
 $string['downloadpdffile'] = 'Deskargatu PDFa';
-$string['saveaudio'] = 'Gorde audioa (WAV)';
+$string['saveaudio'] = 'Gorde audioa';
 $string['status_downloadunavailable'] = 'Audioa deskargatzeko, tokiko ahots bat edo hizkuntza honetarako konfiguratutako audio API bat behar da. Nabigatzailearen ahotsa ezin da esportatu.';
 $string['status_downloadprogress'] = 'Audioa prestatzen: {current}. zatia, guztira {total}.';
-$string['status_downloadready'] = 'Audioa prest dago. Gorde WAV fitxategia konexiorik gabe entzuteko.';
+$string['status_downloadready'] = 'Audioa prest dago. Gorde fitxategia konexiorik gabe entzuteko.';
 $string['status_downloaderror'] = 'Ezin izan da audio osoa sortu. Saiatu berriro.';
 $string['status_downloadcancelled'] = 'Audioaren deskarga bertan behera utzi da.';
-$string['status_pdfreading'] = 'PDFko orrialde guztiak irakurtzen...';
-$string['status_pdfnotfound'] = 'Ez da PDF irakurgarririk aurkitu. Erabili Moodleko domeinu berean dagoen PDF digitala.';
+$string['status_readingactivity'] = 'Jarduera osoa irakurtzen...';
+$string['status_pdfnotfound'] = 'Ez da PDF irakurgarririk aurkitu. Erabili Moodleko domeinu berean dagoen PDF digitala, edo sartu SCORM paketean.';
 $string['status_pdferror'] = 'Ezin izan da PDFaren testu osoa atera. Egiaztatu PDF digitala eta saiatu berriro.';
 $string['status_pdfdownloadstarted'] = 'PDFaren deskarga hasi da.';
+$string['scormpdf'] = 'Sortu PDF bat SCORM paketeetatik';
+$string['scormpdf_help'] = 'SCORM jarduera batean, «Deskargatu PDFa» aukerak argitaratutako paketearen fitxategietatik sortutako PDF bat eskaintzen du: Rise 360ko ikasgaiak, Storyline 360ko diapositibak edo imsmanifest.xml fitxategiak zerrendatzen dituen orriak (eXeLearning eta beste). Paketea irakurri egiten da, ez da erreproduzitzen; beraz, ikasleen aurrerapena ez da ukitzen. Testua eta irudiak gordetzen dira, baina ez diseinua ezta elkarreragina ere, eta galderak erantzunik gabe agertzen dira. Paketea ordezten den bakoitzean PDFa berriro sortzen da.';
+$string['scormpdfdisabled'] = 'SCORM paketeetatik PDFak sortzea desgaituta dago.';
+$string['scormpdfempty'] = 'Ez da testu irakurgarririk aurkitu SCORM pakete honetan.';
+$string['scormpdffailed'] = 'Ezin izan da ikastaroaren PDFa sortu. Arrazoia zerbitzariaren erregistroan idatzi da.';
+$string['status_pdfgenerating'] = 'Ikastaroaren PDFa prestatzen. Lehen aldian minutu bat behar dezake.';
