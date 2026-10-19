@@ -18,7 +18,8 @@
  *
  * Frames arrive from the generator worker over a MessagePort and are decoded in
  * small batches by the streaming Mimi decoder; each batch goes to the page as
- * soon as it is ready.
+ * soon as it is ready. The page applies the reading speed as it plays, so a
+ * change is heard at once.
  *
  * Page -> worker:  {type: 'init', port, baseurl, orturl, wasmpaths}
  * Worker -> page:  {type: 'progress', ...} | {type: 'ready'} | {type: 'initerror', message}

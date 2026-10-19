@@ -287,6 +287,30 @@ if ($ADMIN->fulltree) {
     ));
 
     $settings->add(new admin_setting_heading(
+        'header_rate',
+        get_string('header_rate', 'block_ahotts_embhl'),
+        get_string('header_rate_help', 'block_ahotts_embhl')
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'block_ahotts_embhl/ratechooser',
+        get_string('ratechooser', 'block_ahotts_embhl'),
+        get_string('ratechooser_help', 'block_ahotts_embhl'), 1)
+    );
+
+    $ratechoices = array();
+    foreach (\block_ahotts_embhl\local\languages::RATES as $ratevalue) {
+        $ratechoices[$ratevalue] = format_float((float) $ratevalue, -1) . '×';
+    }
+    $settings->add(new admin_setting_configselect(
+        'block_ahotts_embhl/defaultrate',
+        get_string('defaultrate', 'block_ahotts_embhl'),
+        get_string('defaultrate_help', 'block_ahotts_embhl'),
+        '1',
+        $ratechoices
+    ));
+
+    $settings->add(new admin_setting_heading(
         'header_scorm',
         get_string('header_scorm', 'block_ahotts_embhl'),
         get_string('header_scorm_help', 'block_ahotts_embhl')

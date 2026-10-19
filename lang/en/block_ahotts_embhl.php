@@ -242,6 +242,13 @@ $string['chooserlangs'] = 'Languages offered';
 $string['chooserlangs_help'] = 'Languages the reader may pick from, used by the "let the reader choose" and "follow the lang attribute" modes. Basque needs either the in-browser voices or a Basque aHoTTS endpoint; the other languages need a matching voice in the reader\'s browser.';
 $string['languagelabel'] = 'Language';
 $string['voicelabel'] = 'Voice';
+$string['ratelabel'] = 'Speed';
+$string['header_rate'] = 'Reading speed';
+$string['header_rate_help'] = 'Learners can listen faster or slower. The pitch of the voice is kept. With the browser\'s own voice the change applies from the next sentence; with the other voices, at once.';
+$string['ratechooser'] = 'Let the reader choose the speed';
+$string['ratechooser_help'] = 'Adds a speed menu to the block (from 0.5× to 2×). The choice is remembered in the reader\'s browser.';
+$string['defaultrate'] = 'Default speed';
+$string['defaultrate_help'] = 'Speed used until the reader chooses another one. Downloaded audio is always at normal speed.';
 
 // In-browser Basque voices (itzune Piper models).
 $string['header_piper'] = 'Neural voices in the browser (Piper)';

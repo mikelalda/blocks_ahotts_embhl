@@ -127,6 +127,7 @@ class block_ahotts_embhl extends block_base {
             'stop' => get_string('stoptext', 'block_ahotts_embhl'),
             'language' => get_string('languagelabel', 'block_ahotts_embhl'),
             'voice' => get_string('voicelabel', 'block_ahotts_embhl'),
+            'rate' => get_string('ratelabel', 'block_ahotts_embhl'),
             'download' => get_string('downloadaudio', 'block_ahotts_embhl'),
             'downloadpdffile' => get_string('downloadpdffile', 'block_ahotts_embhl'),
             'saveaudio' => get_string('saveaudio', 'block_ahotts_embhl'),
@@ -139,6 +140,8 @@ class block_ahotts_embhl extends block_base {
             'langmode' => $langmode,
             'lang' => $defaultlang,
             'languages' => $languages,
+            // Reading speed: the menu, and where it starts.
+            'rate' => \block_ahotts_embhl\local\languages::rate_config(),
             // PDFs published inside the SCORM package of this activity, best first.
             'packagepdfs' => \block_ahotts_embhl\local\package_pdf::for_page($this->page),
             // Web Worker that encodes the audio export to MP3.

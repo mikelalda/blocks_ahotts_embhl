@@ -12,6 +12,7 @@ const read = (name) => fs.readFileSync(new URL(`../../${name}`, import.meta.url)
 const speechBuild = read('amd/build/speech.min.js');
 const piperBuild = read('amd/build/piper.min.js');
 const pocketBuild = read('amd/build/pockettts.min.js');
+const stretchBuild = read('amd/build/stretch.min.js');
 const pocketSource = read('amd/src/pockettts.js');
 const speechSource = read('amd/src/speech.js');
 const piperSource = read('amd/src/piper.js');
@@ -43,6 +44,7 @@ const loadBuild = () => {
     };
 
     dom.window.eval(piperBuild);
+    dom.window.eval(stretchBuild);
     dom.window.eval(pocketBuild);
     dom.window.eval(speechBuild);
     return modules;
@@ -54,9 +56,10 @@ test('the builds declare the module ids Moodle asks for', () => {
         'block_ahotts_embhl/piper',
         'block_ahotts_embhl/pockettts',
         'block_ahotts_embhl/speech',
+        'block_ahotts_embhl/stretch',
     ]);
     assert.deepEqual(modules['block_ahotts_embhl/speech'].dependencies, ['exports', './piper', './pockettts']);
-    assert.deepEqual(modules['block_ahotts_embhl/pockettts'].dependencies, ['exports', './piper']);
+    assert.deepEqual(modules['block_ahotts_embhl/pockettts'].dependencies, ['exports', './piper', './stretch']);
 });
 
 test('the speech build exports init and works', () => {

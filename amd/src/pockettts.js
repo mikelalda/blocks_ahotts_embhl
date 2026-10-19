@@ -28,6 +28,10 @@
  * and playback stutters, later fragments wait for a little more audio before
  * they start.
  *
+ * The reading speed is applied while playing, by a pitch-preserving time
+ * stretch (./stretch), and only a second and a half of audio is handed to Web
+ * Audio ahead of the speaker, so a new speed is heard almost at once.
+ *
  * The engine offers the same interface as the others in speech.js. prepare()
  * resolves with a handle once the first audio of a fragment exists; play() plays
  * that handle as it grows. prepareFile() resolves with a complete WAV instead,
@@ -39,6 +43,7 @@
  */
 
 import {encodeWav} from './piper';
+import {createStretcher} from './stretch';
 
 export const SAMPLE_RATE = 24000;
 
@@ -50,6 +55,11 @@ const EXPECTED_BYTES = 125.5e6;
 const PREBUFFER = 0.4;
 const PREBUFFER_STEP = 1;
 const PREBUFFER_MAX = 4;
+
+// Audio is handed to Web Audio this far ahead of the speaker, in seconds, and
+// topped up this often: a new reading speed is heard within that time.
+const LOOKAHEAD = 1.5;
+const TOPUP = 0.25;
 
 // The sampling temperature the itzune model was tuned for.
 const TEMPERATURE = 0.3;
@@ -135,7 +145,10 @@ export const createPocketTtsEngine = (config, deps) => {
         MessageChannel: typeof window !== 'undefined' ? window.MessageChannel : null,
         context: audioContext,
         supported: isSupported,
+        setTimeout: (fn, ms) => window.setTimeout(fn, ms),
+        clearTimeout: (id) => window.clearTimeout(id),
     }, deps || {});
+    const lookahead = config.lookahead || LOOKAHEAD;
 
     let generator = null;
     let decoder = null;
@@ -152,6 +165,7 @@ export const createPocketTtsEngine = (config, deps) => {
     let prebuffer = PREBUFFER;
     let playing = null;
     let voiceurl = config.voiceurl;
+    let rate = 1;
 
     /**
      * A fragment being synthesised.
@@ -389,7 +403,36 @@ export const createPocketTtsEngine = (config, deps) => {
     };
 
     /**
-     * Schedule whatever audio of the playing fragment has not been scheduled yet.
+     * Hand one piece of audio to Web Audio, right after the previous one.
+     *
+     * @param {Object} state The playback in progress.
+     * @param {Float32Array} samples
+     */
+    const scheduleBuffer = (state, samples) => {
+        if (!samples.length) {
+            return;
+        }
+        const context = state.context;
+        if (state.nextTime < context.currentTime) {
+            // The decoder fell behind the speaker: remember it for later fragments.
+            if (state.scheduled > 0) {
+                state.stuttered = true;
+            }
+            state.nextTime = context.currentTime + 0.02;
+        }
+        const buffer = context.createBuffer(1, samples.length, SAMPLE_RATE);
+        buffer.getChannelData(0).set(samples);
+        const source = context.createBufferSource();
+        source.buffer = buffer;
+        source.connect(context.destination);
+        source.start(state.nextTime);
+        state.nextTime += samples.length / SAMPLE_RATE;
+        state.sources.push(source);
+        state.scheduled += 1;
+    };
+
+    /**
+     * Keep Web Audio supplied a little ahead of the speaker, at the current speed.
      *
      * @param {Object} state The playback in progress.
      */
@@ -397,36 +440,39 @@ export const createPocketTtsEngine = (config, deps) => {
         if (playing !== state || state.ended) {
             return;
         }
+        if (state.timer) {
+            io.clearTimeout(state.timer);
+            state.timer = null;
+        }
         const token = state.token;
         const context = state.context;
         if (!state.started) {
-            if (token.length / SAMPLE_RATE < state.prebuffer && !token.done) {
+            if (token.length / SAMPLE_RATE / rate < state.prebuffer && !token.done) {
                 return;
             }
             state.started = true;
             state.nextTime = context.currentTime + 0.05;
         }
-        while (state.index < token.chunks.length) {
-            const samples = token.chunks[state.index];
+        if (state.rate !== rate) {
+            // A new speed: what the stretcher still holds goes out at the old one.
+            scheduleBuffer(state, state.stretcher.flush());
+            state.rate = rate;
+            state.stretcher = createStretcher(rate);
+        }
+        while (state.index < token.chunks.length && state.nextTime - context.currentTime < lookahead) {
+            scheduleBuffer(state, state.stretcher.push(token.chunks[state.index]));
             state.index += 1;
-            if (state.nextTime < context.currentTime) {
-                // The decoder fell behind the speaker: remember it for later fragments.
-                if (state.scheduled > 0) {
-                    state.stuttered = true;
-                }
-                state.nextTime = context.currentTime + 0.02;
-            }
-            const buffer = context.createBuffer(1, samples.length, SAMPLE_RATE);
-            buffer.getChannelData(0).set(samples);
-            const source = context.createBufferSource();
-            source.buffer = buffer;
-            source.connect(context.destination);
-            source.start(state.nextTime);
-            state.nextTime += samples.length / SAMPLE_RATE;
-            state.sources.push(source);
-            state.scheduled += 1;
+        }
+        if (state.index < token.chunks.length) {
+            // More is decoded than is due yet: come back as the clock moves on.
+            state.timer = io.setTimeout(() => schedule(state), TOPUP * 1000);
+            return;
         }
         if (token.done) {
+            if (!state.flushed) {
+                state.flushed = true;
+                scheduleBuffer(state, state.stretcher.flush());
+            }
             const last = state.sources[state.sources.length - 1];
             if (last) {
                 last.onended = () => endPlayback(state);
@@ -441,6 +487,10 @@ export const createPocketTtsEngine = (config, deps) => {
             return;
         }
         state.ended = true;
+        if (state.timer) {
+            io.clearTimeout(state.timer);
+            state.timer = null;
+        }
         if (state.stuttered) {
             prebuffer = Math.min(PREBUFFER_MAX, prebuffer + PREBUFFER_STEP);
         }
@@ -460,6 +510,22 @@ export const createPocketTtsEngine = (config, deps) => {
         setVoice: (url) => {
             if (url) {
                 voiceurl = url;
+            }
+        },
+
+        /**
+         * Read faster or slower, keeping the pitch. The fragment playing changes
+         * once the audio already handed to Web Audio has played.
+         *
+         * @param {Number} value Speed factor, 0.5 to 2.
+         */
+        setRate: (value) => {
+            const number = Number(value);
+            if (number >= 0.5 && number <= 2) {
+                rate = number;
+                if (playing) {
+                    schedule(playing);
+                }
             }
         },
 
@@ -515,6 +581,7 @@ export const createPocketTtsEngine = (config, deps) => {
          * @return {Promise<String>} An object URL.
          */
         prepareFile: (text) => {
+            // A downloaded file is always at normal speed.
             const token = enqueue(text);
             return token.finished.then(() => {
                 tokens.delete(token.id);
@@ -539,6 +606,10 @@ export const createPocketTtsEngine = (config, deps) => {
                 context,
                 resolve,
                 prebuffer,
+                rate,
+                stretcher: createStretcher(rate),
+                flushed: false,
+                timer: null,
                 started: false,
                 ended: false,
                 stuttered: false,

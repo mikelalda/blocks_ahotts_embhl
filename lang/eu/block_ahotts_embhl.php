@@ -63,6 +63,13 @@ $string['chooserlangs'] = 'Eskainitako hizkuntzak';
 $string['chooserlangs_help'] = 'Irakurleak aukeratu ditzakeen hizkuntzak, «irakurleak aukeratu dezala» eta «lang atributuari jarraitu» moduek erabiltzen dituztenak. Euskarak nabigatzaileko ahotsak edo euskarazko aHoTTS endpoint bat behar du; gainerako hizkuntzek nabigatzailean ahots bateragarria behar dute.';
 $string['languagelabel'] = 'Hizkuntza';
 $string['voicelabel'] = 'Ahotsa';
+$string['ratelabel'] = 'Abiadura';
+$string['header_rate'] = 'Irakurketaren abiadura';
+$string['header_rate_help'] = 'Ikasleek azkarrago edo motelago entzun dezakete. Ahotsaren tonua mantentzen da. Nabigatzailearen ahotsarekin aldaketa hurrengo esalditik aurrera aplikatzen da; gainerako ahotsekin, berehala.';
+$string['ratechooser'] = 'Utzi abiadura aukeratzen';
+$string['ratechooser_help'] = 'Abiadura-menu bat eransten dio blokeari (0,5×-etik 2×-era). Aukera irakurlearen nabigatzailean gordetzen da.';
+$string['defaultrate'] = 'Abiadura lehenetsia';
+$string['defaultrate_help'] = 'Irakurleak beste bat aukeratu arte erabiliko den abiadura. Deskargatutako audioa abiadura arruntean dago beti.';
 
 // Euskarazko ahotsak nabigatzailean (itzuneren Piper modeloak).
 $string['header_piper'] = 'Ahots neuronalak nabigatzailean';

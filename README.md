@@ -220,6 +220,51 @@ through `js/esm-bridge.js`, a small ES module shipped with the plugin. Neither
 uses `eval()` nor an inline script, so a strict CSP only has to allow the
 origins the files are served from.
 
+Natural Basque voices: Pocket TTS
+---------------------------------
+
+Basque is read first by [Pocket TTS](https://huggingface.co/kyutai/pocket-tts)
+(Kyutai), fine-tuned for Basque by itzune and published as
+[`itzune/pocket-tts-basque-onnx`](https://huggingface.co/itzune/pocket-tts-basque-onnx)
+(CC BY 4.0). It sounds more natural than Piper and offers five voices (Maider,
+Antton, Nahia, Ane, Aitor). Piper stays behind it: when Pocket TTS cannot start,
+or when the reader picks a Piper voice in the menu, Piper reads.
+
+```
+text --(Basque normaliser: 2024an, 10:30ean, %25...)--> words
+     --(SentencePiece)--> tokens --(text_conditioner)--> embeddings
+     --(flow_lm_main + flow_lm_flow, one 80 ms frame per step)--> latents   [worker 1]
+     --(Mimi decoder, streaming; WSOLA time stretch)--> 24 kHz audio      [worker 2]
+     --> Web Audio, played as it arrives
+```
+
+* **Two workers.** `js/pockettts/generator.js` and `js/pockettts/decoder.js`
+  run single-threaded ONNX Runtime Web each, so two cores are used without the
+  cross-origin isolation (COOP/COEP) that WebAssembly threads would need.
+* **Smaller attention cache.** The published graph declares a 1000-position
+  KV cache; the worker rewrites that declaration (5 bytes) so each sentence
+  only carries what it needs, with identical output.
+* **Numbers.** The model reads letters only, so `js/pockettts/normalize-eu.js`
+  spells out numbers, dates, times, ordinals, percentages, units and common
+  abbreviations, keeping the case endings written on them (`1990eko`, `10ean`).
+* **Download.** About 125 MB the first time (int8 graphs), kept in Cache
+  Storage. The model folder can be self-hosted (*Pocket TTS model folder*).
+* **Speed.** On a 2020s laptop it generates 1.3-1.5x faster than real time. On
+  slower devices playback waits for a little more audio after each stutter.
+
+Credits: Kyutai Pocket TTS; the HiTZ-Aholab studio corpus (Maider, Antton);
+the BSSD dataset (itzune/bssd); `pocket_tts_onnx.py` by KevinAHM (Apache-2.0),
+of which `js/pockettts/engine.js` is a port.
+
+Reading speed
+-------------
+
+The block offers a speed menu (0.5x to 2x, *Let the reader choose the speed*),
+remembered in the reader's browser, and a site default. The pitch is kept:
+Piper and the aHoTTS API play through `<audio>` with `preservesPitch`, Pocket TTS
+is stretched with WSOLA in its decoder worker, and the browser voice uses
+`utterance.rate`. Downloaded audio is always at normal speed.
+
 Reading iframes: what works and what cannot
 -------------------------------------------
 
@@ -346,8 +391,10 @@ Development
 -----------
 
 Sources live in `amd/src/speech.js` (collection, bridge client, language and
-engine selection) and `amd/src/piper.js` (the in-browser Basque engine), and are
-compiled to `amd/build/*.min.js`. In a full Moodle checkout, rebuild them with
+engine selection), `amd/src/piper.js` (the Piper engine) and
+`amd/src/pockettts.js` (the Pocket TTS engine, page side), and are compiled to
+`amd/build/*.min.js`. The Pocket TTS workers in `js/pockettts/` are plain ES
+modules served as they are, with no build step. In a full Moodle checkout, rebuild them with
 Moodle's own tooling:
 
 ```bash

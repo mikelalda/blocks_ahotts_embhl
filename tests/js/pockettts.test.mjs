@@ -188,6 +188,9 @@ const fakeContext = () => {
         },
         createBufferSource: () => {
             const source = {
+                get length() {
+                    return source.buffer ? source.buffer.length : 0;
+                },
                 connect() {},
                 start(when) {
                     source.when = when;
@@ -225,19 +228,19 @@ const CONFIG = {
 /**
  * An engine whose workers have started.
  *
- * @param {Object} [options] {context}
+ * @param {Object} [options] {context, deps}
  * @return {Promise<Object>}
  */
 const startedEngine = async (options = {}) => {
     const {pockettts} = loadSpeech('<p></p>');
     const workers = fakeWorkers();
     const context = options.context || fakeContext();
-    const engine = pockettts.createPocketTtsEngine(CONFIG, {
+    const engine = pockettts.createPocketTtsEngine(CONFIG, Object.assign({
         Worker: workers.Worker,
         MessageChannel: workers.MessageChannel,
         context: () => context,
         supported: () => true,
-    });
+    }, options.deps || {}));
     const warm = engine.warmup();
     const [generator, decoder] = workers.made;
     generator.emit({type: 'ready'});
@@ -652,4 +655,250 @@ test('the audio export asks Pocket TTS for whole files', async () => {
     await tick(40);
 
     assert.deepEqual(ctx.log.map((entry) => entry.call), ['prepareFile']);
+});
+
+// ---------------------------------------------------------------------------
+// Reading speed.
+
+test('the time stretch changes the duration but keeps the pitch', async () => {
+    const {createStretcher} = await import('../../amd/src/stretch.js');
+    const rate = 24000;
+    const tone = Float32Array.from({length: rate * 2}, (_, n) => 0.5 * Math.sin(2 * Math.PI * 200 * n / rate));
+    const crossings = (x) => {
+        let count = 0;
+        for (let i = rate / 4 + 1; i < rate / 4 + rate / 2; i++) {
+            if ((x[i - 1] < 0) !== (x[i] < 0)) {
+                count++;
+            }
+        }
+        return count;
+    };
+    [0.5, 0.75, 1.5, 2].forEach((speed) => {
+        const stretcher = createStretcher(speed);
+        const parts = [];
+        for (let i = 0; i < tone.length; i += 7680) {
+            parts.push(stretcher.push(tone.subarray(i, i + 7680)));
+        }
+        parts.push(stretcher.flush());
+        const out = Float32Array.from(parts.flatMap((part) => [...part]));
+        const expected = tone.length / speed;
+        assert.ok(Math.abs(out.length - expected) < 1500, `${speed}×: ${out.length} samples, about ${expected}`);
+        assert.ok(Math.abs(crossings(out) - 200) <= 6, `${speed}×: still 200 Hz (${crossings(out) / 2} Hz)`);
+    });
+});
+
+test('the time stretch gives the same result however the audio arrives', async () => {
+    const {createStretcher} = await import('../../amd/src/stretch.js');
+    const signal = Float32Array.from({length: 30000}, (_, n) => Math.sin(n / 7) * Math.sin(n / 900));
+    const run = (chunk) => {
+        const stretcher = createStretcher(1.5);
+        const parts = [];
+        for (let i = 0; i < signal.length; i += chunk) {
+            parts.push(...stretcher.push(signal.subarray(i, i + chunk)));
+        }
+        parts.push(...stretcher.flush());
+        return parts;
+    };
+    assert.deepEqual(run(1000), run(7680));
+});
+
+test('normal speed leaves the audio untouched', async () => {
+    const {createStretcher} = await import('../../amd/src/stretch.js');
+    const stretcher = createStretcher(1);
+    assert.deepEqual([...stretcher.push(Float32Array.from([0.1, -0.2]))], [Float32Array.from([0.1])[0], Float32Array.from([-0.2])[0]]);
+    assert.equal(stretcher.flush().length, 0);
+});
+
+/**
+ * An engine whose top-up timer the test fires by hand.
+ *
+ * @return {Promise<Object>}
+ */
+const engineWithTimers = async () => {
+    const timers = [];
+    const ctx = await startedEngine({deps: {
+        setTimeout: (fn) => {
+            timers.push(fn);
+            return timers.length;
+        },
+        clearTimeout: () => {},
+    }});
+    const fire = () => timers.splice(0).forEach((fn) => fn());
+    const scheduledSeconds = () => ctx.context.sources.reduce((sum, source) => sum + source.length / 24000, 0);
+    return {...ctx, fire, scheduledSeconds};
+};
+
+test('the speed is applied while playing, keeping only a little audio ahead', async () => {
+    const {engine, generator, decoder, context, fire, scheduledSeconds} = await engineWithTimers();
+
+    engine.setRate(2);
+    const token = engine.prepare('Azkar.');
+    const speak = speakMessages(generator)[0];
+    assert.equal(speak.rate, undefined, 'the model always speaks at its own pace');
+    for (let i = 0; i < 60; i++) {
+        decoder.emit({type: 'audio', id: speak.id, samples: Float32Array.from({length: 2400}, (_, n) => Math.sin(n / 5))});
+    }
+    const playing = engine.play(await token);
+    const ahead = scheduledSeconds();
+    assert.ok(ahead >= 1.4 && ahead < 1.8, `about a second and a half queued (${ahead.toFixed(2)} s)`);
+
+    // The clock moves on and the timer tops up.
+    context.currentTime += 1;
+    fire();
+    generator.emit({type: 'gendone', id: speak.id});
+    decoder.emit({type: 'decdone', id: speak.id});
+    for (let i = 0; i < 5; i++) {
+        context.currentTime += 1;
+        fire();
+    }
+    const total = scheduledSeconds();
+    assert.ok(Math.abs(total - 3) < 0.1, `six seconds of speech at 2× last about three (${total.toFixed(2)} s)`);
+    context.sources[context.sources.length - 1].onended();
+    await playing;
+});
+
+test('a new speed is heard within the audio already queued', async () => {
+    const {engine, generator, decoder, context, fire, scheduledSeconds} = await engineWithTimers();
+
+    const token = engine.prepare('Luzea.');
+    const speak = speakMessages(generator)[0];
+    for (let i = 0; i < 40; i++) {
+        decoder.emit({type: 'audio', id: speak.id, samples: Float32Array.from({length: 2400}, (_, n) => Math.sin(n / 5))});
+    }
+    generator.emit({type: 'gendone', id: speak.id});
+    decoder.emit({type: 'decdone', id: speak.id});
+    engine.play(await token);
+    const before = scheduledSeconds();
+
+    engine.setRate(2);
+    for (let i = 0; i < 10; i++) {
+        context.currentTime += 1;
+        fire();
+    }
+    const total = scheduledSeconds();
+    // Four seconds of speech: what was queued at 1×, the rest at 2×.
+    const expected = before + (4 - before) / 2;
+    assert.ok(Math.abs(total - expected) < 0.15, `${total.toFixed(2)} s, about ${expected.toFixed(2)} s`);
+});
+
+test('a downloaded file is never stretched', async () => {
+    const speech = loadSpeech('<p></p>');
+    const blobs = [];
+    speech.window.URL.createObjectURL = (blob) => {
+        blobs.push(blob);
+        return 'blob:wav';
+    };
+    const workers = fakeWorkers();
+    const engine = speech.pockettts.createPocketTtsEngine(CONFIG, {
+        Worker: workers.Worker, MessageChannel: workers.MessageChannel, context: fakeContext, supported: () => true,
+    });
+    const warm = engine.warmup();
+    workers.made.forEach((worker) => worker.emit({type: 'ready'}));
+    await warm;
+
+    engine.setRate(2);
+    const file = engine.prepareFile('Fitxategia.');
+    const speak = speakMessages(workers.made[0])[0];
+    workers.made[1].emit({type: 'audio', id: speak.id, samples: new Float32Array(24000)});
+    workers.made[0].emit({type: 'gendone', id: speak.id});
+    workers.made[1].emit({type: 'decdone', id: speak.id});
+    await file;
+    assert.equal(blobs[0].size, 44 + 24000 * 2);
+});
+
+test('an out-of-range speed is ignored', async () => {
+    const {engine, generator, decoder, context, fire, scheduledSeconds} = await engineWithTimers();
+
+    engine.setRate(7);
+    const token = engine.prepare('Normala.');
+    const speak = speakMessages(generator)[0];
+    decoder.emit({type: 'audio', id: speak.id, samples: new Float32Array(24000)});
+    generator.emit({type: 'gendone', id: speak.id});
+    decoder.emit({type: 'decdone', id: speak.id});
+    engine.play(await token);
+    context.currentTime += 1;
+    fire();
+    assert.equal(scheduledSeconds(), 1);
+});
+
+/**
+ * The block with a speed menu, every engine replaced by one that records its speed.
+ *
+ * @param {Object} rate The rate configuration.
+ * @param {String} [stored] A speed remembered from an earlier page.
+ * @return {Object}
+ */
+const startWithRate = (rate, stored) => {
+    const speech = loadSpeech(page);
+    const rates = [];
+    speech.testing.engineFactories.pockettts = () => ({
+        warmup: () => Promise.resolve(true),
+        setVoice() {},
+        setRate: (value) => rates.push(value),
+        prepare: (text) => Promise.resolve(text),
+        play: () => Promise.resolve(),
+        pause() {},
+        resume() {},
+        stop() {},
+        release() {},
+    });
+    if (stored) {
+        speech.window.localStorage.setItem('block_ahotts_embhl_rate', stored);
+    }
+    speech.init({
+        readid: 'region-main',
+        maxlen: 3000,
+        labels: {listen: 'Entzun', loading: 'Kargatzen', pause: 'Pausatu', resume: 'Jarraitu', stop: 'Gelditu',
+            voice: 'Ahotsa', rate: 'Abiadura'},
+        status: {},
+        langmode: 'fixed',
+        lang: 'eu',
+        languages: [{code: 'eu', label: 'Euskara', bcp47: 'eu-ES', engines: [{kind: 'pockettts'}]}],
+        pockettts: POCKET,
+        rate,
+        bridge: {enabled: false, origins: [], timeout: 200},
+    });
+    return {
+        ...speech,
+        rates,
+        link: speech.document.querySelector('a.rsbtn_play'),
+        select: speech.document.querySelector('select.ahotts-rate'),
+    };
+};
+
+const RATE = {chooser: true, default: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 1.75, 2]};
+
+test('the speed menu offers the speeds and starts at the default', () => {
+    const ctx = startWithRate(RATE);
+    assert.deepEqual([...ctx.select.options].map((option) => option.value), ['0.5', '0.75', '1', '1.25', '1.5', '1.75', '2']);
+    assert.equal(ctx.select.value, '1');
+    assert.match(ctx.select.options[1].textContent, /0[.,]75×/);
+});
+
+test('the chosen speed is applied, remembered, and changes the voice already speaking', async () => {
+    const ctx = startWithRate(RATE);
+    ctx.link.click();
+    await tick(20);
+    assert.deepEqual(ctx.rates, [1]);
+
+    ctx.select.value = '1.5';
+    ctx.select.dispatchEvent(new ctx.window.Event('change'));
+    assert.deepEqual(ctx.rates, [1, 1.5], 'the engine in use hears of it at once');
+    assert.equal(ctx.window.localStorage.getItem('block_ahotts_embhl_rate'), '1.5');
+});
+
+test('a speed remembered from an earlier page is used again', async () => {
+    const ctx = startWithRate(RATE, '0.75');
+    assert.equal(ctx.select.value, '0.75');
+    ctx.link.click();
+    await tick(20);
+    assert.deepEqual(ctx.rates, [0.75]);
+});
+
+test('without the menu, the administrator\'s default speed is used', async () => {
+    const ctx = startWithRate({chooser: false, default: 1.25, options: RATE.options}, '2');
+    assert.equal(ctx.select, null);
+    ctx.link.click();
+    await tick(20);
+    assert.deepEqual(ctx.rates, [1.25], 'and not a speed remembered while the menu existed');
 });

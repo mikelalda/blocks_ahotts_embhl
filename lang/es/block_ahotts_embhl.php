@@ -63,6 +63,13 @@ $string['chooserlangs'] = 'Idiomas ofrecidos';
 $string['chooserlangs_help'] = 'Idiomas entre los que se puede elegir, usados por los modos «que lo elija quien lee» y «seguir el atributo lang». El euskera necesita las voces en el navegador o un endpoint aHoTTS en euskera; los demás idiomas necesitan una voz compatible en el navegador.';
 $string['languagelabel'] = 'Idioma';
 $string['voicelabel'] = 'Voz';
+$string['ratelabel'] = 'Velocidad';
+$string['header_rate'] = 'Velocidad de lectura';
+$string['header_rate_help'] = 'El alumnado puede escuchar más rápido o más despacio. Se mantiene el tono de la voz. Con la voz propia del navegador el cambio se aplica a partir de la siguiente frase; con las demás voces, en el momento.';
+$string['ratechooser'] = 'Permitir elegir la velocidad';
+$string['ratechooser_help'] = 'Añade al bloque un menú de velocidad (de 0,5× a 2×). La elección se recuerda en el navegador del lector.';
+$string['defaultrate'] = 'Velocidad predeterminada';
+$string['defaultrate_help'] = 'Velocidad que se usa hasta que el lector elija otra. El audio descargado siempre va a velocidad normal.';
 
 // Voces de euskera en el navegador (modelos Piper de itzune).
 $string['header_piper'] = 'Voces neuronales en el navegador (Piper)';

@@ -40,6 +40,25 @@ class languages {
     /** @var string[] Languages the Listen button knows how to offer. */
     const SUPPORTED = ['eu', 'es', 'en', 'fr', 'ca', 'gl', 'de', 'it', 'pt'];
 
+    /** @var string[] Reading speeds the reader can choose from. */
+    const RATES = ['0.5', '0.75', '1', '1.25', '1.5', '1.75', '2'];
+
+    /**
+     * The reading speed settings handed to the browser.
+     *
+     * @return array {chooser, default, options}
+     */
+    public static function rate_config(): array {
+        $default = (string) get_config('block_ahotts_embhl', 'defaultrate');
+        $chooser = get_config('block_ahotts_embhl', 'ratechooser');
+        return [
+            // Shown unless the administrator turned it off; a fresh install has no value yet.
+            'chooser' => $chooser === false ? true : (bool) $chooser,
+            'default' => in_array($default, self::RATES, true) ? (float) $default : 1.0,
+            'options' => array_map('floatval', self::RATES),
+        ];
+    }
+
     /** @var string[] Languages offered when the administrator has chosen none. */
     const DEFAULT_OFFERED = ['eu', 'es', 'en'];
 

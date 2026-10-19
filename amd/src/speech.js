@@ -46,7 +46,7 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-import {createAudioSink, createPiperEngine, toPcm16} from './piper';
+import {applyRate, createAudioSink, createPiperEngine, toPcm16} from './piper';
 import {createPocketTtsEngine, unlockAudio} from './pockettts';
 
 const STATE_IDLE = 'idle';
@@ -785,6 +785,7 @@ const apiEngine = (api) => {
     const endpoint = api.url.replace(/\/+$/, '') + '/synthesize';
     let audio = null;
     let resolveEnd = null;
+    let rate = 1;
 
     return {
         prepare: (text) => fetch(endpoint, {
@@ -799,6 +800,7 @@ const apiEngine = (api) => {
         }).then((blob) => URL.createObjectURL(blob)),
         play: (url) => new Promise((resolve) => {
             audio = new Audio(url);
+            applyRate(audio, rate);
             resolveEnd = resolve;
             const finishPlay = () => {
                 // Drop the reference so a later resume() can't replay this chunk.
@@ -835,6 +837,10 @@ const apiEngine = (api) => {
             }
         },
         release: (url) => URL.revokeObjectURL(url),
+        setRate: (value) => {
+            rate = Number(value) || 1;
+            applyRate(audio, rate);
+        },
     };
 };
 
@@ -847,6 +853,7 @@ const apiEngine = (api) => {
 const webSpeechEngine = (lang) => {
     const synth = window.speechSynthesis;
     let resolveEnd = null;
+    let rate = 1;
 
     return {
         prepare: (text) => Promise.resolve(text),
@@ -855,6 +862,8 @@ const webSpeechEngine = (lang) => {
             if (lang) {
                 utterance.lang = lang;
             }
+            // The browser cannot change an utterance already speaking: the next one follows the speed.
+            utterance.rate = rate;
             resolveEnd = resolve;
             utterance.onend = resolve;
             utterance.onerror = resolve;
@@ -871,6 +880,9 @@ const webSpeechEngine = (lang) => {
             }
         },
         release: () => {},
+        setRate: (value) => {
+            rate = Number(value) || 1;
+        },
     };
 };
 
@@ -1007,13 +1019,14 @@ const adaptLegacyConfig = (config) => {
  * @param {Object} config
  * @param {String} config.readid    Id of the element whose text is read.
  * @param {Number} config.maxlen    Overall character cap across all chunks.
- * @param {Object} config.labels    Button labels (listen, loading, pause, resume, stop, language, voice).
+ * @param {Object} config.labels    Button labels (listen, loading, pause, resume, stop, language, voice, rate).
  * @param {String} config.langmode  'fixed', 'page', 'content' or 'chooser'.
  * @param {String} config.lang      Base code of the language resolved server side.
  * @param {Array}  config.languages [{code, label, bcp47, engines: [{kind, ...}]}], in preference order.
  * @param {Object} [config.piper]   Piper settings {defaults, chooser, voices, backend, orturl, ...}.
  * @param {Object} [config.pockettts] Pocket TTS settings {defaults, chooser, voices, orturl, wasmpath,
  *                                  generatorurl, decoderurl}; each voice {id, label, language, baseurl, voiceurl}.
+ * @param {Object} [config.rate]    Reading speed {chooser, default, options}.
  * @param {Object} [config.bridge]  Cross-origin bridge {enabled, origins, timeout}.
  * @param {Object} [config.status]  Status messages keyed by name.
  * @param {String} [config.prefer]  Legacy single-language shape: 'api' or 'webspeech'.
@@ -1280,6 +1293,7 @@ export const init = (config) => {
                 continue;
             }
             engineKind = specs[i].kind || '';
+            applyRateTo(engine);
             if (!engine.warmup) {
                 return engine;
             }
@@ -1409,6 +1423,43 @@ export const init = (config) => {
             }
         );
         syncVoiceControl();
+    }
+
+    // Reading speed: the reader's choice, kept across pages, applied to
+    // whichever engine is speaking.
+    const STORAGE_RATE = 'block_ahotts_embhl_rate';
+    const rateConfig = config.rate || {};
+    const rateOptions = (rateConfig.options || []).map(Number).filter((value) => value >= 0.5 && value <= 2);
+    const knownRate = (value) => value !== '' && rateOptions.indexOf(Number(value)) !== -1;
+    const storedRate = readStored(STORAGE_RATE);
+    // A speed remembered from the menu only counts while there is a menu to change it back.
+    let rate = rateConfig.chooser && knownRate(storedRate) ? Number(storedRate) : (Number(rateConfig.default) || 1);
+
+    const applyRateTo = (engine) => {
+        if (engine && engine.setRate) {
+            engine.setRate(rate);
+        }
+    };
+
+    if (rateConfig.chooser && rateOptions.length > 1) {
+        const formatRate = (value) => {
+            try {
+                return new Intl.NumberFormat(document.documentElement.lang || undefined).format(value) + '×';
+            } catch (e) {
+                return String(value) + '×';
+            }
+        };
+        addSelect(
+            'ahotts-rate',
+            config.labels.rate || '',
+            rateOptions.map((value) => ({value: String(value), label: formatRate(value)})),
+            String(rate),
+            (value) => {
+                rate = Number(value);
+                writeStored(STORAGE_RATE, value);
+                applyRateTo(activeEngine);
+            }
+        );
     }
 
     // Explicit Stop control, shown only while playing.

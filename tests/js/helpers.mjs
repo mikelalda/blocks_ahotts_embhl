@@ -70,9 +70,10 @@ export const loadSpeech = (html, url) => {
     // speech.js imports the Piper engine; concatenating the two modules puts
     // createPiperEngine in the same scope, which is what the AMD build does too.
     const piper = moduleSource('piper');
+    const stretch = moduleSource('stretch');
     const pockettts = moduleSource('pockettts');
     const speech = moduleSource('speech');
-    dom.window.eval(piper + '\n' + pockettts + '\n' + speech
+    dom.window.eval(piper + '\n' + stretch + '\n' + pockettts + '\n' + speech
         + '\n;window.__speech = {init: init, testing: __testing};'
         + '\n;window.__piper = {phonemesToIds, encodeWav, createPiperEngine, hasWebGpu,'
         + ' espeakPhonemizer, resolvePhonemizer, createAudioSink, wavHeader, toPcm16};'
