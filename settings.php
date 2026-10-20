@@ -234,10 +234,93 @@ if ($ADMIN->fulltree) {
     ));
 
     $settings->add(new admin_setting_heading(
+        'header_pockettts',
+        get_string('header_pockettts', 'block_ahotts_embhl'),
+        get_string('header_pockettts_help', 'block_ahotts_embhl')
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'block_ahotts_embhl/pocketttsenabled',
+        get_string('pocketttsenabled', 'block_ahotts_embhl'),
+        get_string('pocketttsenabled_help', 'block_ahotts_embhl'), 1)
+    );
+
+    // One default voice and one model folder per language with a Pocket TTS model.
+    foreach (\block_ahotts_embhl\local\languages::POCKETTTS_VOICES as $pocketlang => $pocketvoices) {
+        $choices = array();
+        foreach (array_keys($pocketvoices) as $voiceid) {
+            $choices[$voiceid] = get_string('pocketttsvoice_' . $voiceid, 'block_ahotts_embhl');
+        }
+        $langname = get_string('pipervoicelang_' . $pocketlang, 'block_ahotts_embhl');
+
+        $settings->add(new admin_setting_configselect(
+            'block_ahotts_embhl/pocketttsvoice_' . $pocketlang,
+            get_string('pocketttsvoice_lang', 'block_ahotts_embhl', $langname),
+            get_string('pocketttsvoice_help', 'block_ahotts_embhl'),
+            \block_ahotts_embhl\local\languages::DEFAULT_POCKETTTS_VOICES[$pocketlang],
+            $choices
+        ));
+
+        $settings->add(new admin_setting_configtext(
+            'block_ahotts_embhl/pocketttsbaseurl_' . $pocketlang,
+            get_string('pocketttsbaseurl', 'block_ahotts_embhl', $langname),
+            get_string('pocketttsbaseurl_help', 'block_ahotts_embhl'),
+            '',
+            PARAM_URL
+        ));
+    }
+
+    $settings->add(new admin_setting_configtext(
+        'block_ahotts_embhl/pocketttsort',
+        get_string('pocketttsort', 'block_ahotts_embhl'),
+        get_string('pocketttsort_help', 'block_ahotts_embhl'),
+        \block_ahotts_embhl\local\languages::DEFAULT_POCKETTTS_ORT,
+        PARAM_URL
+    ));
+
+    $settings->add(new admin_setting_configtext(
+        'block_ahotts_embhl/pocketttswasmpath',
+        get_string('pocketttswasmpath', 'block_ahotts_embhl'),
+        get_string('pocketttswasmpath_help', 'block_ahotts_embhl'),
+        \block_ahotts_embhl\local\languages::DEFAULT_POCKETTTS_WASMPATH,
+        PARAM_URL
+    ));
+
+    $settings->add(new admin_setting_heading(
+        'header_rate',
+        get_string('header_rate', 'block_ahotts_embhl'),
+        get_string('header_rate_help', 'block_ahotts_embhl')
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'block_ahotts_embhl/ratechooser',
+        get_string('ratechooser', 'block_ahotts_embhl'),
+        get_string('ratechooser_help', 'block_ahotts_embhl'), 1)
+    );
+
+    $ratechoices = array();
+    foreach (\block_ahotts_embhl\local\languages::RATES as $ratevalue) {
+        $ratechoices[$ratevalue] = format_float((float) $ratevalue, -1) . '×';
+    }
+    $settings->add(new admin_setting_configselect(
+        'block_ahotts_embhl/defaultrate',
+        get_string('defaultrate', 'block_ahotts_embhl'),
+        get_string('defaultrate_help', 'block_ahotts_embhl'),
+        '1',
+        $ratechoices
+    ));
+
+    $settings->add(new admin_setting_heading(
         'header_scorm',
         get_string('header_scorm', 'block_ahotts_embhl'),
         get_string('header_scorm_help', 'block_ahotts_embhl')
     ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'block_ahotts_embhl/riseproxy',
+        get_string('riseproxy', 'block_ahotts_embhl'),
+        get_string('riseproxy_help', 'block_ahotts_embhl'), 0)
+    );
 
     $settings->add(new admin_setting_configcheckbox(
         'block_ahotts_embhl/scormbridge',
@@ -421,5 +504,12 @@ if ($ADMIN->fulltree) {
         get_string('pixels_help', 'block_ahotts_embhl'),
         '130',
         PARAM_RAW
+    ));
+
+    $settings->add(new admin_setting_configcheckbox(
+        'block_ahotts_embhl/scormpdf',
+        get_string('scormpdf', 'block_ahotts_embhl'),
+        get_string('scormpdf_help', 'block_ahotts_embhl'),
+        1
     ));
 }

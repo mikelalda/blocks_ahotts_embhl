@@ -29,8 +29,9 @@ defined('MOODLE_INTERNAL') || die();
 /**
  * Builds the language and engine configuration handed to amd/src/speech.js.
  *
- * Every language with a Piper voice is spoken in the browser by that voice;
- * behind it come the browser's own Web Speech API and the aHoTTS API, when one
+ * Every language with a local voice is spoken in the browser by it: a neural
+ * Pocket TTS voice first where one is published (Basque), then a Piper voice;
+ * behind them come the browser's own Web Speech API and the aHoTTS API, when one
  * is configured. Basque is the exception: no browser ships a Basque voice, and
  * reading it with a Spanish one is worse than not offering the button.
  */
@@ -38,6 +39,25 @@ class languages {
 
     /** @var string[] Languages the Listen button knows how to offer. */
     const SUPPORTED = ['eu', 'es', 'en', 'fr', 'ca', 'gl', 'de', 'it', 'pt'];
+
+    /** @var string[] Reading speeds the reader can choose from. */
+    const RATES = ['0.5', '0.75', '1', '1.25', '1.5', '1.75', '2'];
+
+    /**
+     * The reading speed settings handed to the browser.
+     *
+     * @return array {chooser, default, options}
+     */
+    public static function rate_config(): array {
+        $default = (string) get_config('block_ahotts_embhl', 'defaultrate');
+        $chooser = get_config('block_ahotts_embhl', 'ratechooser');
+        return [
+            // Shown unless the administrator turned it off; a fresh install has no value yet.
+            'chooser' => $chooser === false ? true : (bool) $chooser,
+            'default' => in_array($default, self::RATES, true) ? (float) $default : 1.0,
+            'options' => array_map('floatval', self::RATES),
+        ];
+    }
 
     /** @var string[] Languages offered when the administrator has chosen none. */
     const DEFAULT_OFFERED = ['eu', 'es', 'en'];
@@ -94,6 +114,39 @@ class languages {
             'ryan' => 'https://huggingface.co/rhasspy/piper-voices/resolve/main/en/en_US/ryan/medium/en_US-ryan-medium.onnx',
         ],
     ];
+
+    /**
+     * @var array Where the Pocket TTS model of each language is published, pinned
+     * to a revision so an update upstream cannot change what learners hear.
+     */
+    const POCKETTTS_MODELS = [
+        'eu' => 'https://huggingface.co/itzune/pocket-tts-basque-onnx/resolve/96344d1108004e22864036a6adb6e6f5b90d484c/',
+    ];
+
+    /** @var array The Pocket TTS voices of each model: id => file name in its voices/ folder. */
+    const POCKETTTS_VOICES = [
+        'eu' => [
+            'maider' => 'Maider',
+            'antton' => 'Antton',
+            'nahia' => 'Nahia',
+            'ane' => 'Ane',
+            'aitor' => 'Aitor',
+        ],
+    ];
+
+    /** @var array The Pocket TTS voice a language starts with when the administrator has chosen none. */
+    const DEFAULT_POCKETTTS_VOICES = [
+        'eu' => 'antton',
+    ];
+
+    /** @var string Prefix keeping Pocket TTS voice ids apart from the Piper ones (both have a Maider). */
+    const POCKETTTS_PREFIX = 'pocket-';
+
+    /** @var string ONNX Runtime Web as an ES module, which the Pocket TTS workers import. */
+    const DEFAULT_POCKETTTS_ORT = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/ort.wasm.min.mjs';
+
+    /** @var string Directory of its WebAssembly files. */
+    const DEFAULT_POCKETTTS_WASMPATH = 'https://cdn.jsdelivr.net/npm/onnxruntime-web@1.22.0/dist/';
 
     /** @var array The voice a language starts with when the administrator has chosen none. */
     const DEFAULT_PIPER_VOICES = [
@@ -260,6 +313,89 @@ class languages {
     }
 
     /**
+     * Where the Pocket TTS model of a language is served from.
+     *
+     * @param string $code
+     * @return string Folder URL ending in /, or '' when the language has none.
+     */
+    public static function pockettts_baseurl(string $code): string {
+        $code = self::normalise($code);
+        if (!isset(self::POCKETTTS_MODELS[$code])) {
+            return '';
+        }
+        $url = trim((string) get_config('block_ahotts_embhl', 'pocketttsbaseurl_' . $code));
+        if ($url === '') {
+            $url = self::POCKETTTS_MODELS[$code];
+        }
+        return rtrim($url, '/') . '/';
+    }
+
+    /**
+     * The Pocket TTS voices available in the browser.
+     *
+     * @param string[]|null $codes Languages to list voices for; null lists them all.
+     * @return array[] [{id, label, language, baseurl, voiceurl}]
+     */
+    public static function pockettts_voices(?array $codes = null): array {
+        $wanted = $codes === null ? null : array_map([self::class, 'normalise'], $codes);
+        $voices = [];
+
+        foreach (self::POCKETTTS_VOICES as $language => $published) {
+            if ($wanted !== null && !in_array($language, $wanted, true)) {
+                continue;
+            }
+            $baseurl = self::pockettts_baseurl($language);
+            foreach ($published as $id => $file) {
+                $voices[] = [
+                    'id' => self::POCKETTTS_PREFIX . $id,
+                    'label' => get_string('pocketttsvoice_' . $id, 'block_ahotts_embhl'),
+                    'language' => $language,
+                    'baseurl' => $baseurl,
+                    'voiceurl' => $baseurl . 'voices/' . $file . '.safetensors',
+                ];
+            }
+        }
+
+        return $voices;
+    }
+
+    /**
+     * The Pocket TTS voice each language starts with.
+     *
+     * @param string[] $codes
+     * @return array Language code => voice id.
+     */
+    public static function default_pockettts_voices(array $codes): array {
+        $defaults = [];
+
+        foreach ($codes as $code) {
+            $code = self::normalise($code);
+            if (!isset(self::POCKETTTS_VOICES[$code])) {
+                continue;
+            }
+            $configured = (string) get_config('block_ahotts_embhl', 'pocketttsvoice_' . $code);
+            $id = isset(self::POCKETTTS_VOICES[$code][$configured])
+                ? $configured
+                : (self::DEFAULT_POCKETTTS_VOICES[$code] ?? array_key_first(self::POCKETTTS_VOICES[$code]));
+            $defaults[$code] = self::POCKETTTS_PREFIX . $id;
+        }
+
+        return $defaults;
+    }
+
+    /**
+     * Whether the neural Pocket TTS voices are switched on and usable.
+     *
+     * @return bool
+     */
+    public static function pockettts_enabled(): bool {
+        if (!get_config('block_ahotts_embhl', 'pocketttsenabled')) {
+            return false;
+        }
+        return trim((string) get_config('block_ahotts_embhl', 'pocketttsort')) !== '';
+    }
+
+    /**
      * Whether the in-browser neural voices are switched on and usable.
      *
      * @return bool
@@ -282,13 +418,21 @@ class languages {
      *
      * @param string $code Base language code.
      * @param bool $piperenabled
+     * @param bool $pocketttsenabled
      * @return array[]
      */
-    public static function engines_for(string $code, bool $piperenabled): array {
+    public static function engines_for(string $code, bool $piperenabled, bool $pocketttsenabled = false): array {
         $code = self::normalise($code);
         $engines = [];
 
-        // The local neural voice comes first for every language that has one.
+        // The neural Pocket TTS voice comes first where one is published: it
+        // sounds the most natural. Piper stands behind it, smaller and faster
+        // on devices too slow for it.
+        if ($pocketttsenabled && !empty(self::POCKETTTS_VOICES[$code])) {
+            $engines[] = ['kind' => 'pockettts'];
+        }
+
+        // The local Piper voice, for every language that has one.
         if ($piperenabled && !empty(self::PIPER_VOICES[$code])) {
             $engines[] = ['kind' => 'piper'];
         }
@@ -322,15 +466,17 @@ class languages {
      * @param string[] $codes
      * @param string $configured The plugin or block language setting.
      * @param bool $piperenabled
+     * @param bool $pocketttsenabled
      * @return array[]
      */
-    public static function build(array $codes, string $configured, bool $piperenabled): array {
+    public static function build(array $codes, string $configured, bool $piperenabled,
+            bool $pocketttsenabled = false): array {
         $names = get_string_manager()->get_list_of_languages();
         $out = [];
 
         foreach ($codes as $code) {
             $code = self::normalise($code);
-            $engines = self::engines_for($code, $piperenabled);
+            $engines = self::engines_for($code, $piperenabled, $pocketttsenabled);
             if (!$engines) {
                 continue;
             }

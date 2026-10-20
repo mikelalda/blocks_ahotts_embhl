@@ -1,0 +1,1 @@
+window.globalProvideData('slide', '{"title":"Pregunta","slideLayers":[{"title":"Base","objects":[{"kind":"vectorshape","textLib":[{"vartext":{"blocks":[{"spans":[{"text":"¿Qué es un hacker?"}]}]}}]}]},{"title":"Correct","objects":[{"textLib":[{"vartext":{"blocks":[{"spans":[{"text":"¡Correcto!"}]}]}}]}]}]}');

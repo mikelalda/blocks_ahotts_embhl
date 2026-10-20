@@ -53,20 +53,49 @@ Existing instances, exceptions and inherited blocks are never deleted. See
 Downloading audio for offline listening
 --------------------------------------
 
-**Download audio** generates a single mono PCM WAV containing all the readable
-text currently received by the block, in reading order, using the selected
+**Download audio** generates a single mono MP3 (22050 Hz, 48 kbit/s) in
+reading order, encoded with the bundled lamejs (LGPL, `js/lame/`) in a Web
+Worker as the fragments are synthesised, one after the other. Where that
+worker cannot start, a 16-bit WAV is saved instead. On a SCORM package or a book it reads the **whole activity**,
+from `text.php`: every lesson of the package (as for the PDF below) or every
+chapter of the book the reader may see. Elsewhere it reads all the text the
+block currently receives from the page. It uses the selected
 language and local voice (or the configured aHoTTS API). It shows progress and
 can be cancelled with **Stop**. The file downloads automatically where allowed;
-**Save audio (WAV)** also remains available for an explicit save. Once saved,
+**Save audio** also remains available for an explicit save. Once saved,
 the learner can listen without opening Moodle or connecting to the internet.
 
-**Download PDF audio (WAV)** is a separate option for a digital PDF embedded or
-linked from the reading area, including one shown inside a same-origin SCORM
-package. It extracts selectable text from every page with the locally hosted
-PDF.js library before synthesising the WAV. The PDF must be served from the
-Moodle origin; scanned PDFs and cross-origin PDF files are not supported.
-**Download PDF** saves the original PDF instead. For a PDF.js viewer inside a
-same-origin SCORM package, it downloads the viewer's `file` document.
+Every export writes one line to the web server log through `clientlog.php`
+(`block_ahotts_embhl client: ... exportstart|exportdone|exporterror|exportcancel`),
+with the source, engine, number of fragments and, on failure, the fragment and
+the error, since synthesis happens in the browser and leaves no other trace.
+
+**Download PDF** saves a PDF embedded or linked from the reading area. For a
+PDF.js viewer inside a same-origin SCORM package, it downloads the viewer's
+`file` document.
+
+On a SCORM activity with no PDF on screen, **Download PDF** offers the PDF of
+the whole course, built on the server from the files of the published package
+(*Build a PDF from SCORM packages*, on by default):
+
+* **Rise 360**: every lesson and block from the course data in
+  `scormcontent/locales/`, with accordions, tabs and flashcards expanded and
+  images included. Questions are listed with their options, never with the
+  correct answer or the feedback.
+* **Storyline 360**: the text of every slide from `html5/data/js/`, in story
+  order, leaving feedback layers out. Storyline blocks inside a Rise course are
+  read the same way.
+* **Anything else** (eXeLearning, plain HTML): the pages listed by
+  `imsmanifest.xml`, in the order of its organisation, without navigation.
+
+The package is read, never played, so building the PDF cannot move a learner
+through the course or change their progress. Text and images are kept; layout,
+animation and interactions are not. The PDF is stored per package revision
+(`block_ahotts_embhl/scormpdf` in the activity context): replacing the package
+builds a new one in the background (ad hoc task) or, failing that, on the next
+download. `scormpdf.php` serves it to whoever may open the activity, within its
+opening dates. If the setting is off, a PDF shipped inside the package is
+offered instead.
 
 Export skips Web Speech because browser speech does not expose audio data.
 Languages that only have Web Speech need a local Piper voice or a configured
@@ -113,6 +142,10 @@ Settings
 | Enable the cross-origin SCORM bridge | Turns on the cooperative bridge client. |
 | Allowed SCORM origins | Origins allowed to answer the bridge, one per line. |
 | Bridge timeout | How long to wait for an external package to answer. |
+| Use the Pocket TTS voices | Reads Basque with the natural Pocket TTS voices, ahead of Piper. |
+| Default Pocket TTS voice, model folder, ONNX Runtime Web module | Which voice, and where the model and runtime are fetched from. |
+| Let the reader choose the speed, Default speed | The speed menu (0.5x to 2x) and where it starts. |
+| Serve hosted Rise 360 courses from this site | Points newly uploaded hosted Rise packages at the reverse proxy. Set by `cli/rise_proxy.php --enable`; see *Serving hosted Rise courses from this site*. |
 
 Choosing the reading language
 -----------------------------
@@ -190,6 +223,51 @@ The block loads the runtime with an ordinary `<script>` tag and the phonemizer
 through `js/esm-bridge.js`, a small ES module shipped with the plugin. Neither
 uses `eval()` nor an inline script, so a strict CSP only has to allow the
 origins the files are served from.
+
+Natural Basque voices: Pocket TTS
+---------------------------------
+
+Basque is read first by [Pocket TTS](https://huggingface.co/kyutai/pocket-tts)
+(Kyutai), fine-tuned for Basque by itzune and published as
+[`itzune/pocket-tts-basque-onnx`](https://huggingface.co/itzune/pocket-tts-basque-onnx)
+(CC BY 4.0). It sounds more natural than Piper and offers five voices (Maider,
+Antton, Nahia, Ane, Aitor). Piper stays behind it: when Pocket TTS cannot start,
+or when the reader picks a Piper voice in the menu, Piper reads.
+
+```
+text --(Basque normaliser: 2024an, 10:30ean, %25...)--> words
+     --(SentencePiece)--> tokens --(text_conditioner)--> embeddings
+     --(flow_lm_main + flow_lm_flow, one 80 ms frame per step)--> latents   [worker 1]
+     --(Mimi decoder, streaming; WSOLA time stretch)--> 24 kHz audio      [worker 2]
+     --> Web Audio, played as it arrives
+```
+
+* **Two workers.** `js/pockettts/generator.js` and `js/pockettts/decoder.js`
+  run single-threaded ONNX Runtime Web each, so two cores are used without the
+  cross-origin isolation (COOP/COEP) that WebAssembly threads would need.
+* **Smaller attention cache.** The published graph declares a 1000-position
+  KV cache; the worker rewrites that declaration (5 bytes) so each sentence
+  only carries what it needs, with identical output.
+* **Numbers.** The model reads letters only, so `js/pockettts/normalize-eu.js`
+  spells out numbers, dates, times, ordinals, percentages, units and common
+  abbreviations, keeping the case endings written on them (`1990eko`, `10ean`).
+* **Download.** About 125 MB the first time (int8 graphs), kept in Cache
+  Storage. The model folder can be self-hosted (*Pocket TTS model folder*).
+* **Speed.** On a 2020s laptop it generates 1.3-1.5x faster than real time. On
+  slower devices playback waits for a little more audio after each stutter.
+
+Credits: Kyutai Pocket TTS; the HiTZ-Aholab studio corpus (Maider, Antton);
+the BSSD dataset (itzune/bssd); `pocket_tts_onnx.py` by KevinAHM (Apache-2.0),
+of which `js/pockettts/engine.js` is a port.
+
+Reading speed
+-------------
+
+The block offers a speed menu (0.5x to 2x, *Let the reader choose the speed*),
+remembered in the reader's browser, and a site default. The pitch is kept:
+Piper and the aHoTTS API play through `<audio>` with `preservesPitch`, Pocket TTS
+is stretched with WSOLA in its decoder worker, and the browser voice uses
+`utterance.rate`. Downloaded audio is always at normal speed.
 
 Reading iframes: what works and what cannot
 -------------------------------------------
@@ -274,21 +352,172 @@ Full details, including the message protocol, are in
 
 Content published to Articulate's own hosting (Review 360, Articulate Connected,
 `*.articulate.com`) is served from Articulate's origin, and you cannot add a
-script to files you do not control. Such content will therefore **not** be read,
-and the block will say so.
+script to files you do not control. Out of the box such content is **not** read,
+and the block says so.
 
-It becomes readable in exactly two situations:
+It becomes readable in three situations:
 
 * the bridge is loaded **inside** the Articulate-hosted content — that is, the
   package is published in a way that lets you include the script in its HTML; or
 * the content is legitimately served from the **same origin** as Moodle, for
   example by exporting the package for LMS/web and uploading it to your own
-  site, within the terms of your Articulate licence.
+  site, within the terms of your Articulate licence; or
+* for Rise 360 packages with hosted content, the site's own **reverse proxy**
+  serves the course from Moodle's origin (see the next section).
 
-Nothing else will do it. Proxying someone else's hosted content through your
-domain to fake same-origin is **not** part of this plugin: it raises
-authentication, CSP, licensing and content-integrity questions that need their
-own security review, and it is deliberately left out.
+Rise 360 LMS packages exported with hosted content are a common case: the zip
+only holds `indexAPI.html` and `goodbye.html`, and the course itself is framed
+from `packages.articulateusercontent.com`. Without the proxy, the block
+recognises such frames and shows a specific notice (`status_externalhosted`);
+the rest of the page is still read aloud.
+
+#### Serving hosted Rise courses from this site (reverse proxy)
+
+A Rise 360 package published with hosted content ("connected") only holds
+`indexAPI.html`, which frames the course from
+`packages.articulateusercontent.com`: another origin, so the block cannot read
+it. With a reverse proxy in Apache, the same course is served from Moodle's own
+origin and the block reads it like any other page. SCORM tracking keeps
+working.
+
+How it works:
+
+* **Apache** serves three paths and fetches them from Articulate: the course
+  (`/content/<course id>/`), the SCORM driver Rise loads next to it
+  (`/rise-lms-driver/`) and the Rise runtime (`/articulate-cdn/`, which
+  Articulate's CDN only lets its own origins load). Articulate's absolute URLs
+  in the responses are rewritten to point back at the site.
+* **The plugin** rewrites the `indexAPI.html` of each hosted package so it loads
+  everything from the site, including `REMOTE_PACKAGES_CDN_URL`, which Rise's
+  `host.js` also uses to check where the course's messages come from. It does
+  so for existing packages from the command line, and for new uploads
+  automatically. Each time, it gives the SCORM activity a new revision, so
+  browsers do not keep a cached copy of the old file.
+
+Security:
+
+* **Only the courses of this site's own packages** go through the proxy. Rise
+  lets authors embed code in a course, and anything served from this origin
+  runs with the Moodle session of whoever opens it: an open proxy would let
+  anyone with an Articulate account run code on the site. The allowed courses
+  are listed in `$CFG->dataroot/block_ahotts_embhl/rise-courses.txt`, which
+  Apache reads as a `RewriteMap` and the plugin keeps up to date. Any other
+  course gets a 403.
+* Requests to Articulate carry **no cookies, credentials, `Origin` or
+  `Referer`**, and Articulate's cookies never reach the browser.
+* A package is only rewritten **once the proxy has answered** for its course,
+  so a site without a working proxy keeps loading courses from Articulate.
+
+##### Turning it on
+
+Run the commands from the Moodle directory (`/var/www/html`). They need root,
+and the plugin commands run as the web server user.
+
+1. **Update the plugin** if you have not done so since installing this version:
+
+   ```bash
+   sudo -u www-data php admin/cli/upgrade.php --non-interactive
+   sudo -u www-data php admin/cli/purge_caches.php
+   ```
+
+2. **Generate the Apache configuration** for this site. This also creates the
+   list of allowed courses, which Apache needs in order to start:
+
+   ```bash
+   sudo -u www-data php blocks/ahotts_embhl/cli/rise_proxy.php --apache \
+       | sudo tee /etc/apache2/conf-available/ahotts-rise-proxy.inc
+   ```
+
+3. **Include it in the site's HTTPS VirtualHost**, as the last line before its
+   `</VirtualHost>`. It has to come after any other `<Location>` section, so its
+   cache headers win over rules such as "cache `.js` for a month". A `conf-enabled`
+   symlink or `a2enconf` is **not** enough: the file must be inside the
+   VirtualHost.
+
+   ```apache
+   <VirtualHost *:443>
+       ...
+       Include /etc/apache2/conf-available/ahotts-rise-proxy.inc
+   </VirtualHost>
+   ```
+
+   For example, on a site whose HTTPS VirtualHost ends on line 95 of
+   `ikastaroak.conf`:
+
+   ```bash
+   sudo cp /etc/apache2/sites-available/ikastaroak.conf /etc/apache2/sites-available/ikastaroak.conf.bak
+   grep -n "</VirtualHost>" /etc/apache2/sites-available/ikastaroak.conf   # find the HTTPS one
+   sudo sed -i '95i\    Include /etc/apache2/conf-available/ahotts-rise-proxy.inc' \
+       /etc/apache2/sites-available/ikastaroak.conf
+   ```
+
+4. **Enable the modules and reload Apache**:
+
+   ```bash
+   sudo a2enmod proxy proxy_http ssl rewrite headers substitute
+   sudo apache2ctl configtest && sudo systemctl reload apache2
+   ```
+
+5. **Check the proxy** from the server itself. A server often cannot reach its
+   own public address, so the request goes to 127.0.0.1 with the site's name.
+   Any path under `/content/` must now answer **403**; a `404` means the
+   configuration is not loaded (step 3). Here for `aurrekoikastaroak.birt.eus`;
+   use your site's name:
+
+   ```bash
+   curl -sk --resolve aurrekoikastaroak.birt.eus:443:127.0.0.1 -o /dev/null -w "%{http_code}\n" \
+       https://aurrekoikastaroak.birt.eus/content/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/boot.html
+   ```
+
+6. **Point the hosted packages at the proxy**, and new uploads from now on:
+
+   ```bash
+   sudo -u www-data php blocks/ahotts_embhl/cli/rise_proxy.php --status
+   sudo -u www-data php blocks/ahotts_embhl/cli/rise_proxy.php --enable
+   ```
+
+   Each package should end up `rewritten` (or `already`, if it was done
+   before). `--enable` also turns on *Serve hosted Rise 360 courses from this
+   site*, so packages uploaded later are switched as soon as they are saved.
+
+7. **Open a hosted Rise activity and press Listen.** The SCORM has to open in
+   the **current window** (*Appearance > Display package*): a package opened in
+   a new window has no block to read it.
+
+What the commands print for each package:
+
+| Status | Meaning |
+|---|---|
+| `articulate` | (`--status`) Still loads from Articulate. |
+| `proxied` | (`--status`) Loads through the proxy. |
+| `rewritten` | Switched to the proxy just now. |
+| `already` | Was already switched; its revision is bumped again so browsers refetch it. |
+| `noproxy` | Left on Articulate: the proxy did not answer for its course. See below. |
+| `restored` | (`--disable`) Switched back to Articulate. |
+
+##### When something does not work
+
+| Symptom | Cause and fix |
+|---|---|
+| `--enable` says `noproxy` | Apache does not serve the proxy: the `Include` is missing from the HTTPS VirtualHost, Apache was not reloaded, or `substitute` is not enabled. Step 5 must give 403. Fix it and run `--enable` again. |
+| The course loads but the block does not read it | In the browser's developer tools, the course iframe must load from `https://<your site>/content/...`. If it still loads from `packages.articulateusercontent.com`, run `--enable` again, which refreshes the package's revision, and reload the page. Also check that the SCORM opens in the current window. |
+| A course stops loading after Articulate updates Rise | Rise may have started using another folder of its CDN, which the proxy refuses: look for 403 on `/articulate-cdn/...` in the Apache access log. Run `--disable` to go back to Articulate at once, and add the folder to `rise_proxy::CDN_FOLDERS`. |
+| A new hosted package is not read | It is switched when it is saved, only if the proxy answers. Run `--status`, and `--enable` if it shows `articulate`. |
+
+##### Turning it off
+
+```bash
+sudo -u www-data php blocks/ahotts_embhl/cli/rise_proxy.php --disable
+```
+
+This points every package back at Articulate, gives each a new revision, empties
+the list of allowed courses and turns the setting off. To remove the proxy
+completely, also delete the `Include` line from the VirtualHost and reload
+Apache.
+
+This is not supported by Articulate, and it depends on how Rise loads its
+courses today. Check that serving your hosted courses this way fits your
+Articulate licence.
 
 Limitations
 -----------
@@ -311,8 +540,10 @@ Development
 -----------
 
 Sources live in `amd/src/speech.js` (collection, bridge client, language and
-engine selection) and `amd/src/piper.js` (the in-browser Basque engine), and are
-compiled to `amd/build/*.min.js`. In a full Moodle checkout, rebuild them with
+engine selection), `amd/src/piper.js` (the Piper engine) and
+`amd/src/pockettts.js` (the Pocket TTS engine, page side), and are compiled to
+`amd/build/*.min.js`. The Pocket TTS workers in `js/pockettts/` are plain ES
+modules served as they are, with no build step. In a full Moodle checkout, rebuild them with
 Moodle's own tooling:
 
 ```bash
@@ -362,6 +593,4 @@ GNU GPL v3 or later. This plugin requires no ReadSpeaker licence; audio comes
 from the voices running in the learner's browser, from the endpoints you
 configure, and from the browser's own speech synthesis. The third-party runtime
 and voices it can load are listed under *Self-hosting the runtime and the
-voices*, with their own licences. PDF text extraction uses the locally bundled
-PDF.js 6.4.299 distribution under Apache License 2.0; see
-[`js/pdfjs/LICENSE`](js/pdfjs/LICENSE).
+voices*, with their own licences.

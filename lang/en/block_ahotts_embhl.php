@@ -221,10 +221,13 @@ $string['header_scorm'] = 'SCORM and external content';
 $string['header_scorm_help'] = 'Content inside an iframe served from another domain cannot be read by the browser: the Same-Origin Policy forbids it. Such a package can only be read when it ships the cooperative bridge (bridge/ahotts-scorm-bridge.js) and its origin is listed below. SCORM packages served by this Moodle site are read directly and need no configuration.';
 $string['scormbridge'] = 'Enable the cross-origin SCORM bridge';
 $string['scormbridge_help'] = 'Allow the Listen button to ask external SCORM packages for their text through the cooperative postMessage bridge. It has no effect until at least one origin is listed below.';
+$string['riseproxy'] = 'Serve hosted Rise 360 courses from this site';
+$string['riseproxy_help'] = 'Rise 360 packages published with hosted content ("connected") load the course from packages.articulateusercontent.com, which the block cannot read. With the reverse proxy installed in Apache, each such package is pointed at this site when it is uploaded, and the course is served from here: the block reads it, and SCORM tracking keeps working. Only the courses of this site\'s own packages are proxied. Set it up from the command line, not here: php blocks/ahotts_embhl/cli/rise_proxy.php --apache prints the Apache configuration, and --enable switches the existing packages over and turns this on. A package is only switched once the proxy answers for it.';
 $string['scormorigins'] = 'Allowed SCORM origins';
 $string['scormorigins_help'] = 'One origin per line, as scheme, host and optional port with no path, for example <code>https://scorm.example.org</code> or <code>https://learning.example.org:8443</code>. A single leading wildcard label is accepted (<code>https://*.example.org</code>) and matches sub-domains only. Messages from any other origin are ignored. Entries that are not well formed origins are discarded.';
 $string['scormtimeout'] = 'Bridge timeout (milliseconds)';
 $string['scormtimeout_help'] = 'How long to wait for an external package to answer before treating it as having no bridge.';
+$string['status_externalhosted'] = 'This package loads its content from the authoring tool\'s servers (Articulate), so it cannot be read aloud. Only the rest of the page will be read aloud.';
 $string['status_externalnobridge'] = 'Part of this page is external content that does not allow reading. Only the rest of the page will be read aloud.';
 $string['status_nocontent'] = 'There is no readable text on this page.';
 
@@ -241,6 +244,13 @@ $string['chooserlangs'] = 'Languages offered';
 $string['chooserlangs_help'] = 'Languages the reader may pick from, used by the "let the reader choose" and "follow the lang attribute" modes. Basque needs either the in-browser voices or a Basque aHoTTS endpoint; the other languages need a matching voice in the reader\'s browser.';
 $string['languagelabel'] = 'Language';
 $string['voicelabel'] = 'Voice';
+$string['ratelabel'] = 'Speed';
+$string['header_rate'] = 'Reading speed';
+$string['header_rate_help'] = 'Learners can listen faster or slower. The pitch of the voice is kept. With the browser\'s own voice the change applies from the next sentence; with the other voices, at once.';
+$string['ratechooser'] = 'Let the reader choose the speed';
+$string['ratechooser_help'] = 'Adds a speed menu to the block (from 0.5× to 2×). The choice is remembered in the reader\'s browser.';
+$string['defaultrate'] = 'Default speed';
+$string['defaultrate_help'] = 'Speed used until the reader chooses another one. Downloaded audio is always at normal speed.';
 
 // In-browser Basque voices (itzune Piper models).
 $string['header_piper'] = 'Neural voices in the browser (Piper)';
@@ -249,11 +259,11 @@ $string['piperenabled'] = 'Use neural voices in the browser';
 $string['piperenabled_help'] = 'Reads the page with a voice running on the learner\'s own machine, so no text is sent anywhere. When this is off, or when the runtime cannot start, the browser\'s own voice or the aHoTTS API is used instead. Basque has no browser voice, so with this off it needs the API.';
 $string['pipervoice_lang'] = 'Default voice for {$a}';
 $string['pipervoice_help'] = 'Voice used unless the reader picks another one.';
-$string['pipervoice_antton'] = 'Antton (Basque, male)';
-$string['pipervoice_maider'] = 'Maider (Basque, female)';
-$string['pipervoice_davefx'] = 'Davefx (Spanish from Spain, male)';
-$string['pipervoice_alba'] = 'Alba (British English, female)';
-$string['pipervoice_ryan'] = 'Ryan (American English, male)';
+$string['pipervoice_antton'] = 'Antton';
+$string['pipervoice_maider'] = 'Maider';
+$string['pipervoice_davefx'] = 'Davefx';
+$string['pipervoice_alba'] = 'Alba';
+$string['pipervoice_ryan'] = 'Ryan';
 $string['pipervoicelang_eu'] = 'Basque';
 $string['pipervoicelang_es'] = 'Spanish';
 $string['pipervoicelang_en'] = 'English';
@@ -275,22 +285,47 @@ $string['piperphonemizer_help'] = 'URL of the eSpeak NG phonemizer ES module, wh
 $string['piperphonemizerwasm'] = 'Phonemizer WebAssembly file';
 $string['piperphonemizerwasm_help'] = 'URL of the phonemizer\'s .wasm file. It is downloaded once and reused for every sentence, which is much faster than letting the module fetch it each time. Leave empty to let the module find it by itself.';
 
+// Neural Basque voices (Pocket TTS, itzune).
+$string['header_pockettts'] = 'Natural neural voices in the browser (Pocket TTS)';
+$string['header_pockettts_help'] = 'Pocket TTS (Kyutai), fine-tuned for Basque by itzune (<a href="https://huggingface.co/itzune/pocket-tts-basque-onnx">huggingface.co/itzune/pocket-tts-basque-onnx</a>, CC BY 4.0). It sounds more natural than Piper and reads numbers, dates, times and percentages, but it is heavier: the first time, about 125 MB are downloaded and kept in the browser cache, and it needs a reasonably recent device. It runs in two background workers, so it uses two processor cores. Where it cannot start, the Piper voice is used instead. Credits: Kyutai Pocket TTS, the HiTZ-Aholab studio corpus (Maider and Antton) and the BSSD dataset.';
+$string['pocketttsenabled'] = 'Use the Pocket TTS voices';
+$string['pocketttsenabled_help'] = 'Reads Basque with the Pocket TTS voices, ahead of Piper. Nothing is sent to a server.';
+$string['pocketttsvoice_lang'] = 'Default Pocket TTS voice for {$a}';
+$string['pocketttsvoice_help'] = 'Voice used unless the reader picks another one.';
+$string['pocketttsvoice_maider'] = 'Maider';
+$string['pocketttsvoice_antton'] = 'Antton';
+$string['pocketttsvoice_nahia'] = 'Nahia';
+$string['pocketttsvoice_ane'] = 'Ane';
+$string['pocketttsvoice_aitor'] = 'Aitor';
+$string['pocketttsbaseurl'] = 'Pocket TTS model folder for {$a}';
+$string['pocketttsbaseurl_help'] = 'Folder holding bundle.json, the .onnx files, the tokenizer and the voices/ folder of the model, with a trailing slash. Leave empty for the published model. To host it yourself, copy flow_lm_main_int8.onnx, flow_lm_flow_int8.onnx, mimi_decoder_int8.onnx, text_conditioner.onnx, bundle.json, vocab.json, token_scores.json and voices/*.safetensors, and allow cross-origin reads if it is on another domain.';
+$string['pocketttsort'] = 'ONNX Runtime Web module for Pocket TTS';
+$string['pocketttsort_help'] = 'URL of the ES module build of ONNX Runtime Web (ort.wasm.min.mjs), which the Pocket TTS workers import.';
+$string['pocketttswasmpath'] = 'ONNX Runtime WebAssembly directory for Pocket TTS';
+$string['pocketttswasmpath_help'] = 'Directory holding that build\'s .wasm files, with a trailing slash.';
+
 // Playback status.
 $string['status_preparingvoice'] = 'Preparing the voice. The first time, this downloads it.';
+$string['status_preparingvoiceprogress'] = 'Downloading the voice ({percent}%). This happens only the first time.';
 $string['status_voicefallback'] = 'The voice in the browser could not be started; using the online service instead.';
 $string['status_enginesunavailable'] = 'No voice is available for this language in this browser.';
 
 // Offline audio download.
 $string['downloadaudio'] = 'Download audio';
-$string['downloadaudiopdf'] = 'Download PDF audio (WAV)';
 $string['downloadpdffile'] = 'Download PDF';
-$string['saveaudio'] = 'Save audio (WAV)';
+$string['saveaudio'] = 'Save audio';
 $string['status_downloadunavailable'] = 'Audio download needs a local voice or a configured audio API for this language. Browser speech cannot be exported.';
 $string['status_downloadprogress'] = 'Preparing audio: fragment {current} of {total}.';
-$string['status_downloadready'] = 'Audio ready. Save the WAV file to listen offline.';
+$string['status_downloadready'] = 'Audio ready. Save the file to listen offline.';
 $string['status_downloaderror'] = 'The complete audio could not be generated. Please try again.';
 $string['status_downloadcancelled'] = 'Audio download cancelled.';
-$string['status_pdfreading'] = 'Reading all PDF pages...';
-$string['status_pdfnotfound'] = 'No readable PDF was found. Use a digital PDF served from the same Moodle origin.';
+$string['status_readingactivity'] = 'Reading the whole activity...';
+$string['status_pdfnotfound'] = 'No readable PDF was found. Use a digital PDF served from the same Moodle origin, or include one in the SCORM package.';
 $string['status_pdferror'] = 'Could not extract all PDF text. Check that it is a digital PDF and try again.';
 $string['status_pdfdownloadstarted'] = 'The PDF download has started.';
+$string['scormpdf'] = 'Build a PDF from SCORM packages';
+$string['scormpdf_help'] = 'On a SCORM activity, Download PDF offers a PDF built from the files of the published package: Rise 360 lessons, Storyline 360 slides, or the pages listed by imsmanifest.xml (eXeLearning and others). The package is read, never played, so learners\' progress is not touched. Text and images are kept; layout and interactions are not, and questions are listed without their answers. The PDF is rebuilt whenever the package is replaced.';
+$string['scormpdfdisabled'] = 'Building PDFs from SCORM packages is disabled.';
+$string['scormpdfempty'] = 'No readable text was found in this SCORM package.';
+$string['scormpdffailed'] = 'The course PDF could not be built. The cause has been written to the server log.';
+$string['status_pdfgenerating'] = 'Preparing the course PDF. The first time, this can take a minute.';

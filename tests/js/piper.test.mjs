@@ -237,17 +237,16 @@ test('feeds the model the phoneme ids, the length and the inference scales', asy
     assert.equal(feeds.sid, undefined, 'a single speaker voice needs no speaker id');
 });
 
-test('keeps a short silence between clauses produced for a comma', async () => {
+test('reads every clause in one pass, with no silence inserted between them', async () => {
     const ctx = makeEngine({phonemes: ['ab', 'ba']});
     await ctx.engine.warmup();
     await ctx.engine.prepare('Kaixo, lagun');
 
-    assert.equal(ctx.calls.runs, 2, 'each side of the comma is synthesised as its own clause');
+    assert.equal(ctx.calls.runs, 1, 'both sides of the comma go to the model together');
+    const ids = [...ctx.calls.feeds.input.data].map(Number);
+    assert.deepEqual(ids, [1, 0, 10, 0, 11, 0, 3, 0, 11, 0, 10, 0, 2], 'the clauses are joined by a space');
     const view = await readBlob(ctx.window, ctx.window.__lastBlob);
-    const pausesamples = Math.round(VOICE.audio.sample_rate * 0.18);
-    assert.equal(view.getUint32(40, true), (8 + pausesamples) * 2, 'the WAV contains both clauses and the pause');
-    assert.equal(view.getInt16(44 + (4 * 2), true), 0, 'the inserted pause is silent');
-    assert.equal(view.getInt16(44 + ((4 + pausesamples + 1) * 2), true), 16383, 'audio resumes after the pause');
+    assert.equal(view.getUint32(40, true), 4 * 2, 'the WAV holds only what the model produced');
 });
 
 test('passes a speaker id for a multi speaker voice', async () => {
