@@ -408,6 +408,30 @@ Security:
 * A package is only rewritten **once the proxy has answered** for its course,
   so a site without a working proxy keeps loading courses from Articulate.
 
+##### PDF and audio of connected courses
+
+**Download PDF** and **Download audio** need the whole course on the server,
+and a connected package does not hold it. For such a package the plugin reads
+the course from Articulate the way the browser does: it takes the course id and
+the access token from the package's own `indexAPI.html`, and posts the token to
+`/content/<course id>/content.html` on `packages.articulateusercontent.com`.
+The course page, its language files, its images and its typefaces are then
+read like those of an uploaded Rise package (`classes/local/hosted_course.php`).
+
+* Only Articulate's hosts are asked (`hosted_course::HOSTS`), over HTTPS,
+  through Moodle's curl and its proxy and security settings, without cookies,
+  credentials or redirects. Only the course of each package is read, with that
+  package's token. This works with or without the reverse proxy.
+* A connected course can be republished in Rise while its package in Moodle
+  stays the same. The PDF is therefore kept per package revision **and** per
+  course version (`courseVersion`, from `boot.html?bootEnabled=true`), so a new
+  publication gets a new PDF. When Articulate cannot be reached, the last PDF
+  built is served.
+* When Articulate refuses the token, or the page has no course data, the
+  download says so and the web server log gets the reason, for example
+  `no PDF for SCORM cmid 123 (package: rise, articulate course <id> (POST ...
+  content.html: HTTP 403))`. `cli/scorm_pdf.php --cmid=<id>` prints the same.
+
 ##### Turning it on
 
 Run the commands from the Moodle directory (`/var/www/html`). They need root,

@@ -65,6 +65,9 @@ class scorm_pdf {
     /** @var string[] Image types TCPDF can embed. */
     const IMAGE_TYPES = ['jpg', 'jpeg', 'png', 'gif'];
 
+    /** @var int Most scripts of a hosted course searched for its data. */
+    const MAX_REMOTE_SOURCES = 12;
+
     /** @var string Accent colour of packages that do not name one. */
     const DEFAULT_ACCENT = '#2f5d8a';
 
@@ -98,8 +101,14 @@ class scorm_pdf {
     /** @var callable Read one package file: fn(string $path): ?string. */
     private $read;
 
-    /** @var array Package paths, relative to its root, as keys. */
+    /** @var array|null Package paths, relative to its root, as keys; null when they cannot be listed. */
     private $paths;
+
+    /** @var array Whether a path exists, for a package that cannot be listed. */
+    private $probed = [];
+
+    /** @var hosted_course|null The Articulate-hosted course read instead of the package files. */
+    private $hosted = null;
 
     /** @var string Directory where images are copied for TCPDF. */
     private $tempdir;
@@ -112,13 +121,39 @@ class scorm_pdf {
 
     /**
      * @param callable $read fn(string $path): ?string, paths relative to the package root.
-     * @param string[] $paths Every file of the package.
+     * @param string[]|null $paths Every file of the package; null for a hosted Rise course, which cannot be listed.
      * @param string $tempdir Writable directory for the images; '' to leave images out.
      */
-    public function __construct(callable $read, array $paths, string $tempdir) {
+    public function __construct(callable $read, ?array $paths, string $tempdir) {
         $this->read = $read;
-        $this->paths = array_fill_keys($paths, true);
+        $this->paths = $paths === null ? null : array_fill_keys($paths, true);
         $this->tempdir = rtrim($tempdir, '/');
+    }
+
+    /**
+     * Converter for a Rise course hosted by Articulate ("connected" package).
+     *
+     * @param hosted_course $course
+     * @param string $tempdir
+     * @return self
+     */
+    public static function from_hosted(hosted_course $course, string $tempdir): self {
+        $converter = new self($course->reader(), null, $tempdir);
+        $converter->hosted = $course;
+        return $converter;
+    }
+
+    /**
+     * Where the course is read from, for the logs.
+     *
+     * @return string
+     */
+    public function source(): string {
+        if (!$this->hosted) {
+            return 'package';
+        }
+        return 'articulate course ' . $this->hosted->course_id()
+            . ($this->hosted->error() !== '' ? ' (' . $this->hosted->error() . ')' : '');
     }
 
     /**
@@ -129,6 +164,11 @@ class scorm_pdf {
      * @return self
      */
     public static function from_context(\context_module $context, string $tempdir): self {
+        // A connected Rise package only holds indexAPI.html: the course is on Articulate.
+        $hosted = hosted_course::for_context($context);
+        if ($hosted) {
+            return self::from_hosted($hosted, $tempdir);
+        }
         $files = [];
         $area = get_file_storage()->get_area_files($context->id, 'mod_scorm', 'content', 0, 'filepath, filename', false);
         foreach ($area as $file) {
@@ -169,6 +209,9 @@ class scorm_pdf {
      * @return string 'rise', 'storyline' or 'html'.
      */
     public function kind(): string {
+        if ($this->paths === null) {
+            return 'rise';
+        }
         if ($this->rise_base() !== null) {
             return 'rise';
         }
@@ -419,7 +462,10 @@ class scorm_pdf {
      * @return string|null
      */
     private function rise_base(): ?string {
-        foreach (array_keys($this->paths) as $path) {
+        if ($this->paths === null) {
+            return $this->has('scormcontent/index.html') ? 'scormcontent/' : null;
+        }
+        foreach ($this->listed() as $path) {
             if (preg_match('#^((?:.*/)?scormcontent/)(?:locales/[^/]+\.js|RISE360\.js|lib/rise/[^/]+\.js)$#', $path, $match)
                     && $this->has($match[1] . 'index.html')) {
                 return $match[1];
@@ -441,11 +487,25 @@ class scorm_pdf {
      */
     private function rise_data(string $base): ?array {
         $index = (string) $this->read($base . 'index.html');
-        $sources = [];
+        $sources = [$base . 'index.html'];
         if (preg_match('/"default"\s*:\s*"([^"]+)"/', $index, $match)) {
             $sources[] = $base . 'locales/' . $match[1] . '.js';
         }
-        foreach (array_keys($this->paths) as $path) {
+        // The languages the player offers, for a course whose files cannot be listed.
+        if (preg_match('/"available"\s*:\s*\[([^\]]*)\]/', $index, $match)
+                && preg_match_all('/"([A-Za-z0-9_-]{1,20})"/', $match[1], $languages)) {
+            foreach ($languages[1] as $language) {
+                $sources[] = $base . 'locales/' . $language . '.js';
+            }
+        }
+        // A course that cannot be listed: the course's own scripts and data the page names.
+        $ownscript = '#["\'](?:\./)?((?!lib/|dist/|https?:|//)[A-Za-z0-9_./-]{1,200}\.(?:js|json))["\'?]#';
+        if ($this->paths === null && preg_match_all($ownscript, $index, $named)) {
+            foreach (array_slice(array_unique($named[1]), 0, self::MAX_REMOTE_SOURCES) as $name) {
+                $sources[] = $base . $name;
+            }
+        }
+        foreach ($this->listed() as $path) {
             if (strpos($path, $base) === 0 && preg_match('#^(locales/[^/]+\.js|[^/]+\.(js|json|html))$#',
                     substr($path, strlen($base)))) {
                 $sources[] = $path;
@@ -515,7 +575,7 @@ class scorm_pdf {
 
         // Storyline blocks are published as nested stories inside the package.
         $stories = [];
-        foreach (array_keys($this->paths) as $path) {
+        foreach ($this->listed() as $path) {
             if (strpos($path, $base) === 0 && preg_match('#^(.*/)html5/data/js/data\.js$#', $path, $story)) {
                 $stories[$story[1]] = false;
             }
@@ -588,6 +648,10 @@ class scorm_pdf {
                 }
                 $style .= $italic ? 'I' : '';
                 $file = $base . 'lib/fonts/' . basename((string) $font['key']);
+                if ($this->paths === null) {
+                    // A hosted course takes its typefaces from Articulate's CDN.
+                    $file = 'https://cdn.articulate.com/' . ltrim((string) $font['key'], '/');
+                }
                 $sfnt = $this->has($file) ? woff::to_sfnt((string) $this->read($file)) : null;
                 if ($sfnt !== null && !isset($theme['fonts'][$role][$style])) {
                     $theme['fonts'][$role][$style] = $sfnt;
@@ -776,6 +840,15 @@ class scorm_pdf {
                 $candidates[] = $base . 'assets/' . basename($image[$key]);
             }
         }
+        // A hosted course may link its media where Articulate keeps them.
+        if ($this->paths === null) {
+            if (!empty($image['src']) && is_string($image['src']) && hosted_course::allowed($image['src'])) {
+                $candidates[] = $image['src'];
+            }
+            if (!empty($image['key']) && is_string($image['key']) && strpos($image['key'], 'rise/') === 0) {
+                $candidates[] = 'https://articulateusercontent.com/' . $image['key'];
+            }
+        }
         foreach ($candidates as $path) {
             if ($this->has($path)) {
                 return $this->image($path);
@@ -806,7 +879,7 @@ class scorm_pdf {
                 }
             });
         }
-        foreach (array_keys($this->paths) as $path) {
+        foreach ($this->listed() as $path) {
             if (strpos($path, $dir) === 0 && preg_match('#^[^/]+\.js$#', substr($path, strlen($dir)))) {
                 $order[substr($path, strlen($dir), -3)] = true;
             }
@@ -1120,7 +1193,7 @@ class scorm_pdf {
      * @return string
      */
     private function image(string $path): string {
-        $extension = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        $extension = strtolower(pathinfo((string) parse_url($path, PHP_URL_PATH), PATHINFO_EXTENSION));
         if ($this->tempdir === '' || $this->images >= self::MAX_IMAGES || !in_array($extension, self::IMAGE_TYPES, true)) {
             return '';
         }
@@ -1167,7 +1240,23 @@ class scorm_pdf {
      * @return bool
      */
     private function has(string $path): bool {
-        return isset($this->paths[$path]);
+        if ($this->paths !== null) {
+            return isset($this->paths[$path]);
+        }
+        // A course that cannot be listed: a file exists if it can be read.
+        if (!array_key_exists($path, $this->probed)) {
+            $this->probed[$path] = $this->read($path) !== null;
+        }
+        return $this->probed[$path];
+    }
+
+    /**
+     * Every file of the package, when it can be listed.
+     *
+     * @return string[]
+     */
+    private function listed(): array {
+        return $this->paths === null ? [] : array_keys($this->paths);
     }
 
     /**

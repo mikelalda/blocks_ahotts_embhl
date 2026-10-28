@@ -78,7 +78,13 @@ class scorm_pdf_file {
         $context = \context_module::instance($cm->id);
         $count = count(get_file_storage()->get_area_files($context->id, 'mod_scorm', 'content', 0, 'id', false));
         try {
-            $kind = scorm_pdf::from_context($context, make_request_directory())->kind();
+            $converter = scorm_pdf::from_context($context, '');
+            $kind = $converter->kind();
+            if ($converter->source() !== 'package') {
+                // Read it to learn why a hosted course gave nothing.
+                $converter->document('');
+                $kind .= ', ' . $converter->source();
+            }
         } catch (\Throwable $e) {
             $kind = 'unknown';
         }
@@ -99,7 +105,25 @@ class scorm_pdf_file {
         $revision = (int) $scorm->revision;
         $filename = self::filename($scorm->name);
 
-        $file = self::find($context, $revision);
+        // A connected Rise course can be republished in Rise while its package
+        // stays the same: its version is part of where the PDF is kept.
+        $folder = self::FORMAT;
+        $hosted = hosted_course::for_context($context);
+        if ($hosted) {
+            $version = $hosted->version();
+            if ($version === null) {
+                // Articulate cannot be asked right now: any PDF of this package will do.
+                $files = get_file_storage()->get_area_files($context->id, 'block_ahotts_embhl', self::FILEAREA,
+                    $revision, 'timecreated DESC', false);
+                if ($files) {
+                    return reset($files);
+                }
+            } else {
+                $folder .= $version . '/';
+            }
+        }
+
+        $file = self::find($context, $revision, $folder);
         if ($file) {
             return $file;
         }
@@ -111,11 +135,11 @@ class scorm_pdf_file {
             throw new \moodle_exception('locktimeout');
         }
         try {
-            $file = self::find($context, $revision);
+            $file = self::find($context, $revision, $folder);
             if ($file) {
                 return $file;
             }
-            return self::build($context, $revision, $filename);
+            return self::build($context, $revision, $folder, $filename);
         } finally {
             $lock->release();
         }
@@ -126,11 +150,12 @@ class scorm_pdf_file {
      *
      * @param \context_module $context
      * @param int $revision
+     * @param string $folder
      * @return \stored_file|null
      */
-    private static function find(\context_module $context, int $revision): ?\stored_file {
+    private static function find(\context_module $context, int $revision, string $folder): ?\stored_file {
         $files = get_file_storage()->get_directory_files($context->id, 'block_ahotts_embhl', self::FILEAREA,
-            $revision, self::FORMAT, false, false);
+            $revision, $folder, false, false);
         return $files ? reset($files) : null;
     }
 
@@ -139,10 +164,12 @@ class scorm_pdf_file {
      *
      * @param \context_module $context
      * @param int $revision
+     * @param string $folder
      * @param string $filename
      * @return \stored_file|null
      */
-    private static function build(\context_module $context, int $revision, string $filename): ?\stored_file {
+    private static function build(\context_module $context, int $revision, string $folder,
+            string $filename): ?\stored_file {
         \core_php_time_limit::raise(600);
         raise_memory_limit(MEMORY_HUGE);
 
@@ -160,7 +187,7 @@ class scorm_pdf_file {
             'component' => 'block_ahotts_embhl',
             'filearea' => self::FILEAREA,
             'itemid' => $revision,
-            'filepath' => self::FORMAT,
+            'filepath' => $folder,
             'filename' => $filename,
             'mimetype' => 'application/pdf',
         ], $content);

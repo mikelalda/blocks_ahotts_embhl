@@ -50,6 +50,7 @@ foreach ($document['sections'] as $section) {
     cli_writeln(sprintf('  %s %s (%d characters)', str_repeat('-', $section['level']), $section['title'] ?: '[untitled]',
         core_text::strlen($text)));
 }
+cli_writeln('Source: ' . $converter->source());
 if (scorm_pdf::is_empty($document)) {
     cli_problem('No readable text was found.');
     exit(2);
