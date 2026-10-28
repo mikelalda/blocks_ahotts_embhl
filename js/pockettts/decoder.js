@@ -40,6 +40,7 @@ let busy = false;
 
 const post = (msg, transfer) => self.postMessage(msg, transfer || []);
 
+
 const pump = async () => {
     if (busy || !decoder) {
         return;

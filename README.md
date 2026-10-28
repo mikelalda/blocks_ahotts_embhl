@@ -142,6 +142,10 @@ Settings
 | Enable the cross-origin SCORM bridge | Turns on the cooperative bridge client. |
 | Allowed SCORM origins | Origins allowed to answer the bridge, one per line. |
 | Bridge timeout | How long to wait for an external package to answer. |
+| Use the Pocket TTS voices | Reads Basque with the natural Pocket TTS voices, ahead of Piper. |
+| Default Pocket TTS voice, model folder, ONNX Runtime Web module | Which voice, and where the model and runtime are fetched from. |
+| Let the reader choose the speed, Default speed | The speed menu (0.5x to 2x) and where it starts. |
+| Serve hosted Rise 360 courses from this site | Points newly uploaded hosted Rise packages at the reverse proxy. Set by `cli/rise_proxy.php --enable`; see *Serving hosted Rise courses from this site*. |
 
 Choosing the reading language
 -----------------------------
@@ -348,27 +352,172 @@ Full details, including the message protocol, are in
 
 Content published to Articulate's own hosting (Review 360, Articulate Connected,
 `*.articulate.com`) is served from Articulate's origin, and you cannot add a
-script to files you do not control. Such content will therefore **not** be read,
-and the block will say so.
+script to files you do not control. Out of the box such content is **not** read,
+and the block says so.
 
-It becomes readable in exactly two situations:
+It becomes readable in three situations:
 
 * the bridge is loaded **inside** the Articulate-hosted content — that is, the
   package is published in a way that lets you include the script in its HTML; or
 * the content is legitimately served from the **same origin** as Moodle, for
   example by exporting the package for LMS/web and uploading it to your own
-  site, within the terms of your Articulate licence.
+  site, within the terms of your Articulate licence; or
+* for Rise 360 packages with hosted content, the site's own **reverse proxy**
+  serves the course from Moodle's origin (see the next section).
 
 Rise 360 LMS packages exported with hosted content are a common case: the zip
 only holds `indexAPI.html` and `goodbye.html`, and the course itself is framed
-from `packages.articulateusercontent.com`. The block recognises such frames and
-shows a specific notice (`status_externalhosted`); the rest of the page is still
-read aloud.
+from `packages.articulateusercontent.com`. Without the proxy, the block
+recognises such frames and shows a specific notice (`status_externalhosted`);
+the rest of the page is still read aloud.
 
-Nothing else will do it. Proxying someone else's hosted content through your
-domain to fake same-origin is **not** part of this plugin: it raises
-authentication, CSP, licensing and content-integrity questions that need their
-own security review, and it is deliberately left out.
+#### Serving hosted Rise courses from this site (reverse proxy)
+
+A Rise 360 package published with hosted content ("connected") only holds
+`indexAPI.html`, which frames the course from
+`packages.articulateusercontent.com`: another origin, so the block cannot read
+it. With a reverse proxy in Apache, the same course is served from Moodle's own
+origin and the block reads it like any other page. SCORM tracking keeps
+working.
+
+How it works:
+
+* **Apache** serves three paths and fetches them from Articulate: the course
+  (`/content/<course id>/`), the SCORM driver Rise loads next to it
+  (`/rise-lms-driver/`) and the Rise runtime (`/articulate-cdn/`, which
+  Articulate's CDN only lets its own origins load). Articulate's absolute URLs
+  in the responses are rewritten to point back at the site.
+* **The plugin** rewrites the `indexAPI.html` of each hosted package so it loads
+  everything from the site, including `REMOTE_PACKAGES_CDN_URL`, which Rise's
+  `host.js` also uses to check where the course's messages come from. It does
+  so for existing packages from the command line, and for new uploads
+  automatically. Each time, it gives the SCORM activity a new revision, so
+  browsers do not keep a cached copy of the old file.
+
+Security:
+
+* **Only the courses of this site's own packages** go through the proxy. Rise
+  lets authors embed code in a course, and anything served from this origin
+  runs with the Moodle session of whoever opens it: an open proxy would let
+  anyone with an Articulate account run code on the site. The allowed courses
+  are listed in `$CFG->dataroot/block_ahotts_embhl/rise-courses.txt`, which
+  Apache reads as a `RewriteMap` and the plugin keeps up to date. Any other
+  course gets a 403.
+* Requests to Articulate carry **no cookies, credentials, `Origin` or
+  `Referer`**, and Articulate's cookies never reach the browser.
+* A package is only rewritten **once the proxy has answered** for its course,
+  so a site without a working proxy keeps loading courses from Articulate.
+
+##### Turning it on
+
+Run the commands from the Moodle directory (`/var/www/html`). They need root,
+and the plugin commands run as the web server user.
+
+1. **Update the plugin** if you have not done so since installing this version:
+
+   ```bash
+   sudo -u www-data php admin/cli/upgrade.php --non-interactive
+   sudo -u www-data php admin/cli/purge_caches.php
+   ```
+
+2. **Generate the Apache configuration** for this site. This also creates the
+   list of allowed courses, which Apache needs in order to start:
+
+   ```bash
+   sudo -u www-data php blocks/ahotts_embhl/cli/rise_proxy.php --apache \
+       | sudo tee /etc/apache2/conf-available/ahotts-rise-proxy.inc
+   ```
+
+3. **Include it in the site's HTTPS VirtualHost**, as the last line before its
+   `</VirtualHost>`. It has to come after any other `<Location>` section, so its
+   cache headers win over rules such as "cache `.js` for a month". A `conf-enabled`
+   symlink or `a2enconf` is **not** enough: the file must be inside the
+   VirtualHost.
+
+   ```apache
+   <VirtualHost *:443>
+       ...
+       Include /etc/apache2/conf-available/ahotts-rise-proxy.inc
+   </VirtualHost>
+   ```
+
+   For example, on a site whose HTTPS VirtualHost ends on line 95 of
+   `ikastaroak.conf`:
+
+   ```bash
+   sudo cp /etc/apache2/sites-available/ikastaroak.conf /etc/apache2/sites-available/ikastaroak.conf.bak
+   grep -n "</VirtualHost>" /etc/apache2/sites-available/ikastaroak.conf   # find the HTTPS one
+   sudo sed -i '95i\    Include /etc/apache2/conf-available/ahotts-rise-proxy.inc' \
+       /etc/apache2/sites-available/ikastaroak.conf
+   ```
+
+4. **Enable the modules and reload Apache**:
+
+   ```bash
+   sudo a2enmod proxy proxy_http ssl rewrite headers substitute
+   sudo apache2ctl configtest && sudo systemctl reload apache2
+   ```
+
+5. **Check the proxy** from the server itself. A server often cannot reach its
+   own public address, so the request goes to 127.0.0.1 with the site's name.
+   Any path under `/content/` must now answer **403**; a `404` means the
+   configuration is not loaded (step 3). Here for `aurrekoikastaroak.birt.eus`;
+   use your site's name:
+
+   ```bash
+   curl -sk --resolve aurrekoikastaroak.birt.eus:443:127.0.0.1 -o /dev/null -w "%{http_code}\n" \
+       https://aurrekoikastaroak.birt.eus/content/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/boot.html
+   ```
+
+6. **Point the hosted packages at the proxy**, and new uploads from now on:
+
+   ```bash
+   sudo -u www-data php blocks/ahotts_embhl/cli/rise_proxy.php --status
+   sudo -u www-data php blocks/ahotts_embhl/cli/rise_proxy.php --enable
+   ```
+
+   Each package should end up `rewritten` (or `already`, if it was done
+   before). `--enable` also turns on *Serve hosted Rise 360 courses from this
+   site*, so packages uploaded later are switched as soon as they are saved.
+
+7. **Open a hosted Rise activity and press Listen.** The SCORM has to open in
+   the **current window** (*Appearance > Display package*): a package opened in
+   a new window has no block to read it.
+
+What the commands print for each package:
+
+| Status | Meaning |
+|---|---|
+| `articulate` | (`--status`) Still loads from Articulate. |
+| `proxied` | (`--status`) Loads through the proxy. |
+| `rewritten` | Switched to the proxy just now. |
+| `already` | Was already switched; its revision is bumped again so browsers refetch it. |
+| `noproxy` | Left on Articulate: the proxy did not answer for its course. See below. |
+| `restored` | (`--disable`) Switched back to Articulate. |
+
+##### When something does not work
+
+| Symptom | Cause and fix |
+|---|---|
+| `--enable` says `noproxy` | Apache does not serve the proxy: the `Include` is missing from the HTTPS VirtualHost, Apache was not reloaded, or `substitute` is not enabled. Step 5 must give 403. Fix it and run `--enable` again. |
+| The course loads but the block does not read it | In the browser's developer tools, the course iframe must load from `https://<your site>/content/...`. If it still loads from `packages.articulateusercontent.com`, run `--enable` again, which refreshes the package's revision, and reload the page. Also check that the SCORM opens in the current window. |
+| A course stops loading after Articulate updates Rise | Rise may have started using another folder of its CDN, which the proxy refuses: look for 403 on `/articulate-cdn/...` in the Apache access log. Run `--disable` to go back to Articulate at once, and add the folder to `rise_proxy::CDN_FOLDERS`. |
+| A new hosted package is not read | It is switched when it is saved, only if the proxy answers. Run `--status`, and `--enable` if it shows `articulate`. |
+
+##### Turning it off
+
+```bash
+sudo -u www-data php blocks/ahotts_embhl/cli/rise_proxy.php --disable
+```
+
+This points every package back at Articulate, gives each a new revision, empties
+the list of allowed courses and turns the setting off. To remove the proxy
+completely, also delete the `Include` line from the VirtualHost and reload
+Apache.
+
+This is not supported by Articulate, and it depends on how Rise loads its
+courses today. Check that serving your hosted courses this way fits your
+Articulate licence.
 
 Limitations
 -----------

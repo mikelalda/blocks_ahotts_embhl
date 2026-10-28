@@ -27,13 +27,23 @@ defined('MOODLE_INTERNAL') || die();
 class observer {
 
     /**
-     * Build the PDF of a SCORM activity in the background once its package is
-     * saved, so that the first learner does not wait for it.
+     * Once a SCORM package is saved: point a hosted Rise 360 package at this
+     * site's reverse proxy, so it can be read, and build the activity's PDF in
+     * the background, so that the first learner does not wait for it.
      *
      * @param \core\event\base $event course_module_created or course_module_updated.
      */
     public static function course_module_changed(\core\event\base $event): void {
-        if (($event->other['modulename'] ?? '') !== 'scorm' || !local\scorm_pdf_file::enabled()) {
+        if (($event->other['modulename'] ?? '') !== 'scorm') {
+            return;
+        }
+        try {
+            local\rise_proxy::package_saved((int) $event->objectid);
+        } catch (\Throwable $e) {
+            // The package still works from Articulate's hosting; it is just not readable.
+            debugging('Rise proxy: ' . $e->getMessage(), DEBUG_DEVELOPER);
+        }
+        if (!local\scorm_pdf_file::enabled()) {
             return;
         }
         $task = new task\build_scorm_pdf();

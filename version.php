@@ -25,8 +25,8 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version = 2026101903;  // YYYYMMDDRR.
+$plugin->version = 2026102000;  // YYYYMMDDRR.
 $plugin->requires = 2015111600; // YYYYMMDDHH
 $plugin->component = 'block_ahotts_embhl'; // Full name of the plugin (used for diagnostics)
 $plugin->maturity  = MATURITY_STABLE;
-$plugin->release = "dev-r137-pockettts";
+$plugin->release = "dev-r138-riseproxy";

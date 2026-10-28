@@ -317,6 +317,12 @@ if ($ADMIN->fulltree) {
     ));
 
     $settings->add(new admin_setting_configcheckbox(
+        'block_ahotts_embhl/riseproxy',
+        get_string('riseproxy', 'block_ahotts_embhl'),
+        get_string('riseproxy_help', 'block_ahotts_embhl'), 0)
+    );
+
+    $settings->add(new admin_setting_configcheckbox(
         'block_ahotts_embhl/scormbridge',
         get_string('scormbridge', 'block_ahotts_embhl'),
         get_string('scormbridge_help', 'block_ahotts_embhl'), 0)
