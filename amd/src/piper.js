@@ -134,11 +134,37 @@ export const toPcm16 = (samples) => {
     const pcm = new Int16Array(samples.length);
     for (let i = 0; i < samples.length; i++) {
         const sample = Math.max(-1, Math.min(1, samples[i]));
-        view.setInt16(offset, sample < 0 ? sample * 0x8000 : sample * 0x7FFF, true);
-        offset += 2;
+        pcm[i] = sample < 0 ? sample * 0x8000 : sample * 0x7FFF;
     }
+    return pcm;
+};
 
-    return new Blob([view], {type: 'audio/wav'});
+/**
+ * Encode float samples as a mono 16-bit PCM WAV file.
+ *
+ * @param {Float32Array} samples
+ * @param {Number} samplerate
+ * @return {Blob}
+ */
+export const encodeWav = (samples, samplerate) =>
+    new Blob([wavHeader(samples.length, samplerate), toPcm16(samples)], {type: 'audio/wav'});
+
+/**
+ * Play an audio element at a speed, keeping the pitch where the browser can.
+ *
+ * @param {HTMLAudioElement} audio
+ * @param {Number} rate
+ */
+export const applyRate = (audio, rate) => {
+    if (!audio) {
+        return;
+    }
+    audio.preservesPitch = true;
+    audio.webkitPreservesPitch = true;
+    audio.mozPreservesPitch = true;
+    // Loading resets playbackRate to defaultPlaybackRate in some browsers: set both.
+    audio.defaultPlaybackRate = rate;
+    audio.playbackRate = rate;
 };
 
 /**
@@ -597,138 +623,6 @@ export const createPiperEngine = (config, deps) => {
             applyRate(audio, rate);
         },
     };
-};
-
-/**
- * Where an export writes its audio, fragment after fragment: an MP3 encoded in
- * a Web Worker as it goes, or a WAV when that worker cannot start.
- *
- * @param {String} mp3url URL of js/mp3-worker.js; empty for WAV.
- * @param {Function} [WorkerClass] Worker constructor, for testing.
- * @param {Number} [timeout] Milliseconds the encoder may take to start.
- * @return {Object} {open(samplerate), write(pcm), finish(), abort(), format}
- */
-export const createAudioSink = (mp3url, WorkerClass = self.Worker, timeout = 15000) => {
-    let worker = null;
-    let samplerate = 0;
-    let failure = null;
-    let finished = null;
-    const parts = [];
-    let length = 0;
-
-    const sink = {
-        format: 'wav',
-
-        /**
-         * Start the encoder; falls back to WAV when it does not answer.
-         *
-         * @param {Number} rate Sample rate of everything that will be written.
-         * @return {Promise}
-         */
-        open: (rate) => {
-            samplerate = rate;
-            if (!mp3url || !WorkerClass) {
-                return Promise.resolve();
-            }
-            return new Promise((resolve) => {
-                let candidate = null;
-                try {
-                    candidate = new WorkerClass(mp3url);
-                } catch (e) {
-                    resolve();
-                    return;
-                }
-                const settle = (ok) => {
-                    clearTimeout(timer);
-                    if (ok) {
-                        worker = candidate;
-                        sink.format = 'mp3';
-                    } else {
-                        candidate.terminate();
-                    }
-                    resolve();
-                };
-                const timer = setTimeout(() => settle(false), timeout);
-                candidate.onmessage = (event) => {
-                    const message = event.data || {};
-                    if (message.type === 'started') {
-                        settle(true);
-                    } else if (message.type === 'done' && finished) {
-                        finished.resolve(message.blob);
-                    } else if (message.type === 'error') {
-                        failure = new Error('MP3 encoder: ' + message.error);
-                        if (finished) {
-                            finished.reject(failure);
-                        }
-                    }
-                };
-                candidate.onerror = (event) => {
-                    if (event && event.preventDefault) {
-                        event.preventDefault();
-                    }
-                    if (worker) {
-                        failure = new Error('MP3 encoder stopped');
-                        if (finished) {
-                            finished.reject(failure);
-                        }
-                    } else {
-                        settle(false);
-                    }
-                };
-                candidate.postMessage({type: 'start', samplerate: rate, kbps: 48});
-            });
-        },
-
-        /**
-         * Append 16-bit samples.
-         *
-         * @param {Int16Array} pcm Handed over: do not use it afterwards.
-         */
-        write: (pcm) => {
-            if (failure) {
-                throw failure;
-            }
-            if (worker) {
-                worker.postMessage({type: 'pcm', pcm: pcm}, [pcm.buffer]);
-            } else {
-                parts.push(pcm);
-                length += pcm.length;
-            }
-        },
-
-        /**
-         * The finished file.
-         *
-         * @return {Promise<Blob>}
-         */
-        finish: () => {
-            if (!worker) {
-                return Promise.resolve(new Blob([wavHeader(length, samplerate)].concat(parts), {type: 'audio/wav'}));
-            }
-            if (failure) {
-                return Promise.reject(failure);
-            }
-            return new Promise((resolve, reject) => {
-                finished = {resolve, reject};
-                worker.postMessage({type: 'end'});
-            }).finally(() => {
-                worker.terminate();
-                worker = null;
-            });
-        },
-
-        /**
-         * Drop everything written so far.
-         */
-        abort: () => {
-            if (worker) {
-                worker.terminate();
-                worker = null;
-            }
-            parts.length = 0;
-        },
-    };
-    return sink;
 };
 
 /**
