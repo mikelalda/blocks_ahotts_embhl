@@ -25,7 +25,7 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version = 2026102800;  // YYYYMMDDRR.
+$plugin->version = 2026102900;  // YYYYMMDDRR.
 $plugin->requires = 2015111600; // YYYYMMDDHH
 $plugin->component = 'block_ahotts_embhl'; // Full name of the plugin (used for diagnostics)
 $plugin->maturity  = MATURITY_STABLE;

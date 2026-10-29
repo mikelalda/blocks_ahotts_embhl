@@ -421,7 +421,12 @@ class scorm_pdf {
     private static function register_fonts(\TCPDF $pdf, array $fonts, string $fontdir): array {
         $families = [];
         $suffix = ['' => '', 'B' => 'b', 'I' => 'i', 'BI' => 'bi'];
+        // The face that stands in for a style the course does not ship.
+        $fallbacks = ['B' => ['B', ''], 'I' => ['I', ''], 'BI' => ['BI', 'B', 'I', '']];
         foreach ($fonts as $role => $styles) {
+            if (!isset($styles[''])) {
+                continue;
+            }
             // Named after the regular face, so a typeface is converted once for all courses.
             $family = 'scorm' . substr(sha1($styles['']), 0, 10);
             try {
@@ -435,6 +440,19 @@ class scorm_pdf {
                         }
                     }
                     $pdf->AddFont($family, $style, "{$fontdir}/{$name}.php");
+                }
+                // TCPDF looks for a missing style in its own font directory and
+                // fails the whole PDF: give every style a face of this family.
+                foreach ($fallbacks as $style => $candidates) {
+                    if (isset($styles[$style])) {
+                        continue;
+                    }
+                    foreach ($candidates as $candidate) {
+                        if (isset($styles[$candidate])) {
+                            $pdf->AddFont($family, $style, "{$fontdir}/{$family}{$suffix[$candidate]}.php");
+                            break;
+                        }
+                    }
                 }
                 $families[$role] = $family;
             } catch (\Throwable $e) {
