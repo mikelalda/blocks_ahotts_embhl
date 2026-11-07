@@ -1,13 +1,20 @@
 <?php
 // This file is part of Moodle - http://moodle.org/
+//
 // Moodle is free software: you can redistribute it and/or modify
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
 
 namespace block_ahotts_embhl\local;
-
-defined('MOODLE_INTERNAL') || die();
 
 /**
  * Explainable language inference for bulk provisioning, without external services.
@@ -59,8 +66,11 @@ class course_language {
         $text = implode(' ', array_unique($texts));
         // Do not let parallel translations decide the course's language.
         $text = preg_replace('/\{mlang\s+[^}]+\}.*?\{mlang\}/isu', ' ', $text);
-        $text = preg_replace('/<span\b[^>]*class=["\'][^"\']*multilang[^"\']*["\'][^>]*>.*?<\/span>/isu',
-            ' ', $text);
+        $text = preg_replace(
+            '/<span\b[^>]*class=["\'][^"\']*multilang[^"\']*["\'][^>]*>.*?<\/span>/isu',
+            ' ',
+            $text
+        );
         $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
         $tokens = array_flip(preg_split('/[^\p{L}]+/u', mb_strtolower($text, 'UTF-8'), -1, PREG_SPLIT_NO_EMPTY));
         foreach (self::WORDS as $language => $words) {

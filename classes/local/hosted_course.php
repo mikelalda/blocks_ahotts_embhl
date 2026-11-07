@@ -16,8 +16,6 @@
 
 namespace block_ahotts_embhl\local;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * The course of a Rise 360 hosted ("connected") package, read from Articulate.
  *
@@ -40,7 +38,6 @@ defined('MOODLE_INTERNAL') || die();
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class hosted_course {
-
     /** @var string[] Hosts the course and its media may be read from. */
     const HOSTS = ['packages.articulateusercontent.com', 'articulateusercontent.com', 'cdn.articulate.com'];
 
@@ -69,6 +66,8 @@ class hosted_course {
     private $error = '';
 
     /**
+     * Prepare the client of one hosted course.
+     *
      * @param string $courseid
      * @param string $token
      * @param callable|null $http fn(string $method, string $url, array $post): ?array {status, body}; Moodle's curl by default.
@@ -188,7 +187,7 @@ class hosted_course {
      * @return callable fn(string $path): ?string
      */
     public function reader(): callable {
-        return function(string $path): ?string {
+        return function (string $path): ?string {
             if (preg_match('~^https://~', $path)) {
                 return $this->get($path);
             }
@@ -284,8 +283,10 @@ class hosted_course {
             $response = null;
             $this->error = $method . ' ' . $url . ': ' . $e->getMessage();
         }
-        if (!is_array($response) || (int) ($response['status'] ?? 0) !== 200 || !is_string($response['body'] ?? null)
-                || strlen($response['body']) > self::MAX_BYTES) {
+        if (
+            !is_array($response) || (int) ($response['status'] ?? 0) !== 200 || !is_string($response['body'] ?? null)
+                || strlen($response['body']) > self::MAX_BYTES
+        ) {
             if (is_array($response)) {
                 $this->error = $method . ' ' . preg_replace('~\?.*$~', '', $url) . ': HTTP ' . (int) ($response['status'] ?? 0);
             }

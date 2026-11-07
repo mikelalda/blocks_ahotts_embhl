@@ -14,6 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+namespace block_ahotts_embhl;
+
+use block_ahotts_embhl\local\languages;
+
+#[\PHPUnit\Framework\Attributes\CoversClass(\block_ahotts_embhl\local\languages::class)]
 /**
  * Tests for the reading languages, engines and voices.
  *
@@ -22,13 +27,7 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  * @covers     \block_ahotts_embhl\local\languages
  */
-
-namespace block_ahotts_embhl;
-
-use block_ahotts_embhl\local\languages;
-
-class languages_test extends \advanced_testcase {
-
+final class languages_test extends \advanced_testcase {
     public function test_normalise_reduces_any_tag_to_its_base_code(): void {
         $this->assertSame('eu', languages::normalise('eu_ES'));
         $this->assertSame('eu', languages::normalise('eu-ES'));
@@ -154,10 +153,11 @@ class languages_test extends \advanced_testcase {
     public function test_piper_voices_are_listed_per_language(): void {
         $this->resetAfterTest(true);
 
-        $this->assertSame(['antton', 'maider'], array_column(languages::piper_voices(['eu']), 'id'));
-        
+        // Maider is listed first in PIPER_VOICES since 544b295; Antton stays the default voice.
+        $this->assertSame(['maider', 'antton'], array_column(languages::piper_voices(['eu']), 'id'));
+
         $both = languages::piper_voices(['eu', 'es']);
-        $this->assertSame(['eu', 'eu', 'es', 'es'], array_column($both, 'language'));
+        $this->assertSame(['eu', 'eu', 'es'], array_column($both, 'language'));
 
         foreach (languages::piper_voices() as $voice) {
             $this->assertStringContainsString('.onnx', $voice['modelurl']);
@@ -189,11 +189,11 @@ class languages_test extends \advanced_testcase {
         $this->resetAfterTest(true);
         set_config('pipermodel_antton', 'https://moodle.example.local/voices/antton.onnx', 'block_ahotts_embhl');
 
-        $voices = languages::piper_voices(['eu']);
+        $urls = array_column(languages::piper_voices(['eu']), 'modelurl', 'id');
 
-        $this->assertSame('https://moodle.example.local/voices/antton.onnx', $voices[0]['modelurl']);
+        $this->assertSame('https://moodle.example.local/voices/antton.onnx', $urls['antton']);
         // The voice that was not overridden keeps its published URL.
-        $this->assertStringContainsString('huggingface.co/itzune', $voices[1]['modelurl']);
+        $this->assertStringContainsString('huggingface.co/itzune', $urls['maider']);
     }
 
     public function test_the_default_phonemizer_carries_more_than_english(): void {
@@ -245,8 +245,10 @@ class languages_test extends \advanced_testcase {
 
         $voices = languages::pockettts_voices(['eu', 'es']);
 
-        $this->assertSame(['pocket-maider', 'pocket-antton', 'pocket-nahia', 'pocket-ane', 'pocket-aitor'],
-            array_column($voices, 'id'));
+        $this->assertSame(
+            ['pocket-maider', 'pocket-antton', 'pocket-nahia', 'pocket-ane', 'pocket-aitor'],
+            array_column($voices, 'id')
+        );
         foreach ($voices as $voice) {
             $this->assertSame('eu', $voice['language']);
             $this->assertStringStartsWith($voice['baseurl'] . 'voices/', $voice['voiceurl']);

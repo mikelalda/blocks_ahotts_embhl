@@ -30,7 +30,6 @@ if (!class_exists('pdf')) {
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class scorm_pdf_document extends \pdf {
-
     /** @var string Course title, repeated at the top of every page but the cover. */
     public $coursetitle = '';
 

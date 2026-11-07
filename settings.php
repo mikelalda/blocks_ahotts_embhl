@@ -25,8 +25,15 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-if ($ADMIN->fulltree) {
+// The usage report, under Site administration > Reports.
+$ADMIN->add('reports', new admin_externalpage(
+    'block_ahotts_embhl_usage',
+    get_string('usagereport', 'block_ahotts_embhl'),
+    new moodle_url('/blocks/ahotts_embhl/usage.php'),
+    'block/ahotts_embhl:viewusage'
+));
 
+if ($ADMIN->fulltree) {
     $settings->add(new admin_setting_heading(
         'header_config',
         get_string('header_config', 'block_ahotts_embhl'),
@@ -114,20 +121,20 @@ if ($ADMIN->fulltree) {
         get_string('langmode', 'block_ahotts_embhl'),
         get_string('langmode_help', 'block_ahotts_embhl'),
         'fixed',
-        array(
+        [
             'fixed' => get_string('langmode_fixed', 'block_ahotts_embhl'),
             'page' => get_string('langmode_page', 'block_ahotts_embhl'),
             'content' => get_string('langmode_content', 'block_ahotts_embhl'),
-            'chooser' => get_string('langmode_chooser', 'block_ahotts_embhl')
-        )
+            'chooser' => get_string('langmode_chooser', 'block_ahotts_embhl'),
+        ]
     ));
 
     $settings->add(new admin_setting_configmultiselect(
         'block_ahotts_embhl/chooserlangs',
         get_string('chooserlangs', 'block_ahotts_embhl'),
         get_string('chooserlangs_help', 'block_ahotts_embhl'),
-        array('eu', 'es', 'en'),
-        array(
+        ['eu', 'es', 'en'],
+        [
             'eu' => get_string('basque', 'block_ahotts_embhl'),
             'es' => get_string('spanish_castilian', 'block_ahotts_embhl'),
             'en' => get_string('english_brittish', 'block_ahotts_embhl'),
@@ -136,8 +143,8 @@ if ($ADMIN->fulltree) {
             'gl' => get_string('gelician', 'block_ahotts_embhl'),
             'de' => get_string('german', 'block_ahotts_embhl'),
             'it' => get_string('italian', 'block_ahotts_embhl'),
-            'pt' => get_string('portuguese', 'block_ahotts_embhl')
-        )
+            'pt' => get_string('portuguese', 'block_ahotts_embhl'),
+        ]
     ));
 
     $settings->add(new admin_setting_heading(
@@ -149,21 +156,25 @@ if ($ADMIN->fulltree) {
     $settings->add(new admin_setting_configcheckbox(
         'block_ahotts_embhl/piperenabled',
         get_string('piperenabled', 'block_ahotts_embhl'),
-        get_string('piperenabled_help', 'block_ahotts_embhl'), 1)
-    );
+        get_string('piperenabled_help', 'block_ahotts_embhl'),
+        1
+    ));
 
     // One default voice per language, and one model URL per voice, so a site can
     // host the models itself instead of reaching out to Hugging Face.
     foreach (\block_ahotts_embhl\local\languages::PIPER_VOICES as $piperlang => $pipervoices) {
-        $choices = array();
+        $choices = [];
         foreach (array_keys($pipervoices) as $voiceid) {
             $choices[$voiceid] = get_string('pipervoice_' . $voiceid, 'block_ahotts_embhl');
         }
 
         $settings->add(new admin_setting_configselect(
             'block_ahotts_embhl/pipervoice_' . $piperlang,
-            get_string('pipervoice_lang', 'block_ahotts_embhl',
-                get_string('pipervoicelang_' . $piperlang, 'block_ahotts_embhl')),
+            get_string(
+                'pipervoice_lang',
+                'block_ahotts_embhl',
+                get_string('pipervoicelang_' . $piperlang, 'block_ahotts_embhl')
+            ),
             get_string('pipervoice_help', 'block_ahotts_embhl'),
             \block_ahotts_embhl\local\languages::DEFAULT_PIPER_VOICES[$piperlang],
             $choices
@@ -173,27 +184,31 @@ if ($ADMIN->fulltree) {
     $settings->add(new admin_setting_configcheckbox(
         'block_ahotts_embhl/pipervoicechooser',
         get_string('pipervoicechooser', 'block_ahotts_embhl'),
-        get_string('pipervoicechooser_help', 'block_ahotts_embhl'), 1)
-    );
+        get_string('pipervoicechooser_help', 'block_ahotts_embhl'),
+        1
+    ));
 
     $settings->add(new admin_setting_configselect(
         'block_ahotts_embhl/piperbackend',
         get_string('piperbackend', 'block_ahotts_embhl'),
         get_string('piperbackend_help', 'block_ahotts_embhl'),
         'auto',
-        array(
+        [
             'auto' => get_string('piperbackend_auto', 'block_ahotts_embhl'),
             'webgpu' => get_string('piperbackend_webgpu', 'block_ahotts_embhl'),
-            'wasm' => get_string('piperbackend_wasm', 'block_ahotts_embhl')
-        )
+            'wasm' => get_string('piperbackend_wasm', 'block_ahotts_embhl'),
+        ]
     ));
 
     foreach (\block_ahotts_embhl\local\languages::PIPER_VOICES as $pipervoices) {
         foreach ($pipervoices as $voiceid => $modelurl) {
             $settings->add(new admin_setting_configtext(
                 'block_ahotts_embhl/pipermodel_' . $voiceid,
-                get_string('pipermodel', 'block_ahotts_embhl',
-                    get_string('pipervoice_' . $voiceid, 'block_ahotts_embhl')),
+                get_string(
+                    'pipermodel',
+                    'block_ahotts_embhl',
+                    get_string('pipervoice_' . $voiceid, 'block_ahotts_embhl')
+                ),
                 get_string('pipermodel_help', 'block_ahotts_embhl'),
                 $modelurl,
                 PARAM_URL
@@ -242,12 +257,13 @@ if ($ADMIN->fulltree) {
     $settings->add(new admin_setting_configcheckbox(
         'block_ahotts_embhl/pocketttsenabled',
         get_string('pocketttsenabled', 'block_ahotts_embhl'),
-        get_string('pocketttsenabled_help', 'block_ahotts_embhl'), 1)
-    );
+        get_string('pocketttsenabled_help', 'block_ahotts_embhl'),
+        1
+    ));
 
     // One default voice and one model folder per language with a Pocket TTS model.
     foreach (\block_ahotts_embhl\local\languages::POCKETTTS_VOICES as $pocketlang => $pocketvoices) {
-        $choices = array();
+        $choices = [];
         foreach (array_keys($pocketvoices) as $voiceid) {
             $choices[$voiceid] = get_string('pocketttsvoice_' . $voiceid, 'block_ahotts_embhl');
         }
@@ -295,10 +311,11 @@ if ($ADMIN->fulltree) {
     $settings->add(new admin_setting_configcheckbox(
         'block_ahotts_embhl/ratechooser',
         get_string('ratechooser', 'block_ahotts_embhl'),
-        get_string('ratechooser_help', 'block_ahotts_embhl'), 1)
-    );
+        get_string('ratechooser_help', 'block_ahotts_embhl'),
+        1
+    ));
 
-    $ratechoices = array();
+    $ratechoices = [];
     foreach (\block_ahotts_embhl\local\languages::RATES as $ratevalue) {
         $ratechoices[$ratevalue] = format_float((float) $ratevalue, -1) . '×';
     }
@@ -319,14 +336,16 @@ if ($ADMIN->fulltree) {
     $settings->add(new admin_setting_configcheckbox(
         'block_ahotts_embhl/riseproxy',
         get_string('riseproxy', 'block_ahotts_embhl'),
-        get_string('riseproxy_help', 'block_ahotts_embhl'), 0)
-    );
+        get_string('riseproxy_help', 'block_ahotts_embhl'),
+        0
+    ));
 
     $settings->add(new admin_setting_configcheckbox(
         'block_ahotts_embhl/scormbridge',
         get_string('scormbridge', 'block_ahotts_embhl'),
-        get_string('scormbridge_help', 'block_ahotts_embhl'), 0)
-    );
+        get_string('scormbridge_help', 'block_ahotts_embhl'),
+        0
+    ));
 
     $settings->add(new admin_setting_configtextarea(
         'block_ahotts_embhl/scormorigins',
@@ -349,7 +368,7 @@ if ($ADMIN->fulltree) {
         get_string('lang', 'block_ahotts_embhl'),
         get_string('lang_help', 'block_ahotts_embhl'),
         'en_us',
-        array(
+        [
             'af_za' => get_string('afrikaans', 'block_ahotts_embhl'),
             'ar_ar' => get_string('arabic', 'block_ahotts_embhl'),
             'bg_bg' => get_string('bulgarian', 'block_ahotts_embhl'),
@@ -417,8 +436,8 @@ if ($ADMIN->fulltree) {
             'tr_tr' => get_string('turkish', 'block_ahotts_embhl'),
             'uk_ua' => get_string('ukrainian', 'block_ahotts_embhl'),
             'cy_cy' => get_string('welsh', 'block_ahotts_embhl'),
-            'ts_za' => get_string('xitsonga', 'block_ahotts_embhl')
-        )
+            'ts_za' => get_string('xitsonga', 'block_ahotts_embhl'),
+        ]
     ));
 
     $settings->add(new admin_setting_configselect(
@@ -426,10 +445,10 @@ if ($ADMIN->fulltree) {
         get_string('translation', 'block_ahotts_embhl'),
         get_string('translation_help', 'block_ahotts_embhl'),
         '0',
-        array(
-                '0' => get_string('translation_page', 'block_ahotts_embhl'),
-                '1' => get_string('translation_voice', 'block_ahotts_embhl')
-            )
+        [
+            '0' => get_string('translation_page', 'block_ahotts_embhl'),
+            '1' => get_string('translation_voice', 'block_ahotts_embhl'),
+        ]
     ));
 
     $settings->add(new admin_setting_configselect(
@@ -437,7 +456,7 @@ if ($ADMIN->fulltree) {
         get_string('region', 'block_ahotts_embhl'),
         get_string('region_help', 'block_ahotts_embhl'),
         'eu',
-        array(
+        [
             'af' => get_string('africa', 'block_ahotts_embhl'),
             'as' => get_string('asia', 'block_ahotts_embhl'),
             'eas' => get_string('east_asia', 'block_ahotts_embhl'),
@@ -445,8 +464,8 @@ if ($ADMIN->fulltree) {
             'me' => get_string('middle_east', 'block_ahotts_embhl'),
             'na' => get_string('north_america', 'block_ahotts_embhl'),
             'sa' => get_string('south_america', 'block_ahotts_embhl'),
-            'oc' => get_string('oceania', 'block_ahotts_embhl')
-        )
+            'oc' => get_string('oceania', 'block_ahotts_embhl'),
+        ]
     ));
 
     $settings->add(new admin_setting_configselect(
@@ -454,29 +473,25 @@ if ($ADMIN->fulltree) {
         get_string('showincontent', 'block_ahotts_embhl'),
         get_string('showincontent_help', 'block_ahotts_embhl'),
         '1',
-        array(
-                '0' => get_string('showincontent_showinblock', 'block_ahotts_embhl'),
-                '1' => get_string('showincontent_showincontent', 'block_ahotts_embhl')
-            )
+        [
+            '0' => get_string('showincontent_showinblock', 'block_ahotts_embhl'),
+            '1' => get_string('showincontent_showincontent', 'block_ahotts_embhl'),
+        ]
     ));
-
-    $settings->add(new admin_setting_configcheckbox(
-        'block_ahotts_embhl/docreader',
-        get_string('docreader', 'block_ahotts_embhl'),
-        get_string('docreader_help', 'block_ahotts_embhl'), false)
-    );
 
     $settings->add(new admin_setting_configcheckbox(
         'block_ahotts_embhl/disableinem',
         get_string('disableinem', 'block_ahotts_embhl'),
-        get_string('disableinem_help', 'block_ahotts_embhl'), false)
-    );
+        get_string('disableinem_help', 'block_ahotts_embhl'),
+        false
+    ));
 
     $settings->add(new admin_setting_configcheckbox(
         'block_ahotts_embhl/latestscript',
         get_string('latestscript', 'block_ahotts_embhl'),
-        get_string('latestscript_help', 'block_ahotts_embhl'), false)
-    );
+        get_string('latestscript_help', 'block_ahotts_embhl'),
+        false
+    ));
 
     $settings->add(new admin_setting_configtext(
         'block_ahotts_embhl/customparams',
@@ -489,14 +504,16 @@ if ($ADMIN->fulltree) {
     $settings->add(new admin_setting_configcheckbox(
         'block_ahotts_embhl/statistics',
         get_string('statistics', 'block_ahotts_embhl'),
-        get_string('stats_help', 'block_ahotts_embhl'), false)
-    );
+        get_string('stats_help', 'block_ahotts_embhl'),
+        false
+    ));
 
     $settings->add(new admin_setting_configcheckbox(
         'block_ahotts_embhl/mobileapp',
         get_string('mobileapp', 'block_ahotts_embhl'),
-        get_string('mobileapp_help', 'block_ahotts_embhl'), false),
-    );
+        get_string('mobileapp_help', 'block_ahotts_embhl'),
+        false
+    ));
 
     $settings->add(new admin_setting_configtext(
         'block_ahotts_embhl/pixels',

@@ -25,39 +25,49 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$capabilities = array(
+$capabilities = [
 
-    'block/ahotts_embhl:myaddinstance' => array(
+    'block/ahotts_embhl:myaddinstance' => [
         'captype' => 'read',
         'contextlevel' => CONTEXT_SYSTEM,
-        'archetypes' => array(
-            'user' => CAP_ALLOW
-        ),
-        
-        'clonepermissionsfrom' => 'moodle/my:manageblocks'
-    ),
-    
-    'block/ahotts_embhl:addinstance' => array(
+        'archetypes' => [
+            'user' => CAP_ALLOW,
+        ],
+
+        'clonepermissionsfrom' => 'moodle/my:manageblocks',
+    ],
+
+    'block/ahotts_embhl:addinstance' => [
         'riskbitmask' => RISK_SPAM | RISK_XSS,
         'captype' => 'write',
         'contextlevel' => CONTEXT_BLOCK,
-        'archetypes' => array(
+        'archetypes' => [
             'editingteacher' => CAP_ALLOW,
-            'manager' => CAP_ALLOW
-        ),
-        
-        'clonepermissionsfrom' => 'moodle/site:manageblocks'
-    ),
-    
-    'block/ahotts_embhl:edit' => array(
+            'manager' => CAP_ALLOW,
+        ],
+
+        'clonepermissionsfrom' => 'moodle/site:manageblocks',
+    ],
+
+    'block/ahotts_embhl:edit' => [
     'riskbitmask' => RISK_SPAM | RISK_XSS,
     'captype' => 'write',
         'contextlevel' => CONTEXT_BLOCK,
-        'archetypes' => array(
+        'archetypes' => [
             'editingteacher' => CAP_ALLOW,
-            'manager' => CAP_ALLOW
-        ),
-        
-        'clonepermissionsfrom' => 'moodle/site:manageblocks'
-    )
-);
+            'manager' => CAP_ALLOW,
+        ],
+
+        'clonepermissionsfrom' => 'moodle/site:manageblocks',
+    ],
+
+    // Monthly totals of readings and downloads: site-wide for managers, per course for teachers.
+    'block/ahotts_embhl:viewusage' => [
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => [
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+    ],
+];

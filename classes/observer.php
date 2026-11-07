@@ -13,9 +13,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
-namespace block_ahotts_embhl;
 
-defined('MOODLE_INTERNAL') || die();
+namespace block_ahotts_embhl;
 
 /**
  * Event observers.
@@ -25,7 +24,6 @@ defined('MOODLE_INTERNAL') || die();
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class observer {
-
     /**
      * Once a SCORM package is saved: point a hosted Rise 360 package at this
      * site's reverse proxy, so it can be read, and build the activity's PDF in

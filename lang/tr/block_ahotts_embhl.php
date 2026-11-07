@@ -23,8 +23,5 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-// Listen button text
-$string['listentext'] = "Dinle";
-
-// Listen button descriptive title text
 $string['listen_titletext'] = "Bu sayfayı BirtSpeaker ile dinle";
+$string['listentext'] = "Dinle";

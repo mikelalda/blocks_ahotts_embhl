@@ -22,8 +22,6 @@
  * @author     Nikolina Milioni
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-// Listen button text.
-$string['listentext'] = "Kuulake";
 
-// Listen button descriptive title text.
 $string['listen_titletext'] = "Kuulake seda lehte BirtSpeakeri abil";
+$string['listentext'] = "Kuulake";

@@ -23,62 +23,73 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-#[AllowDynamicProperties]
-
+/**
+ * The aHoTTS Listen button block.
+ *
+ * @package    block_ahotts_embhl
+ * @copyright  2016 ReadSpeaker <info@readspeaker.com>
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
 class block_ahotts_embhl extends block_base {
+    /** @var string Reading language set by the administrator or on this instance. */
+    protected $configlanguage = '';
 
+    /** @var string Id of the page element whose text is read. */
+    protected $configreadid = '';
+
+    /** @var string Whether the Listen button is hidden while editing ('1') or not. */
+    protected $disableinem = '';
+
+    /**
+     * Set the block title and the site-wide defaults.
+     */
     public function init() {
-        // Set default text on the Listen button.
         $this->title = get_string('pluginname', 'block_ahotts_embhl');
 
-        $this->plugin_config_language = get_config('block_ahotts_embhl', 'lang');
-        $this->plugin_config_readid = get_config('block_ahotts_embhl', 'readid');
-        $this->plugin_custom_params = get_config('block_ahotts_embhl', 'customparams');
-
-        $this->plugin_disable_in_em = get_config('block_ahotts_embhl', 'disableinem');
-        $this->plugin_custom_showincontent = get_config('block_ahotts_embhl', 'showincontent');
-
-        $this->plugin_mode = get_config('block_ahotts_embhl', 'mode');
+        $this->configlanguage = (string) get_config('block_ahotts_embhl', 'lang');
+        $this->configreadid = (string) get_config('block_ahotts_embhl', 'readid');
+        $this->disableinem = (string) get_config('block_ahotts_embhl', 'disableinem');
     }
 
+    /**
+     * Apply the settings of this block instance over the site-wide defaults.
+     */
     public function specialization() {
-        if (isset($this->config)) {
-            if (!empty($this->config->lang)) {
-                $this->plugin_config_language = $this->config->lang;
-            }
-            if (!empty($this->config->customparams)) {
-                $this->plugin_custom_params = $this->config->customparams;
-            }
-            if (!empty($this->config->mode)) {
-                $this->plugin_mode = $this->config->mode;
-            }
+        if (isset($this->config) && !empty($this->config->lang)) {
+            $this->configlanguage = $this->config->lang;
         }
     }
 
+    /**
+     * Build the Listen button and hand its configuration to the front-end module.
+     *
+     * @return stdClass The block content.
+     */
     public function get_content() {
         if ($this->content !== null) {
             return $this->content;
         }
 
-        $this->content = new stdClass;
+        $this->content = new stdClass();
         $this->content->text = '';
+        $this->content->footer = $this->usage_link();
 
         // Don't show the Listen button while editing the page, if configured so.
-        $edit_mode = $this->page->user_is_editing();
-        if ($this->plugin_disable_in_em === '1' && $edit_mode) {
+        $editmode = $this->page->user_is_editing();
+        if ($this->disableinem === '1' && $editmode) {
             return $this->content;
         }
 
         // Set default text on the Listen button.
-        $listen_text = get_string('listentext', 'block_ahotts_embhl');
-        $listen_text_title = get_string('listen_titletext', 'block_ahotts_embhl');
+        $listentext = get_string('listentext', 'block_ahotts_embhl');
+        $listentexttitle = get_string('listen_titletext', 'block_ahotts_embhl');
 
         // Work out which languages the Listen button offers, and with which
         // engine. Basque is spoken by the itzune Piper voices in the browser and
         // by the aHoTTS API behind them; every other language is spoken by the
         // browser's own Web Speech API.
         $langmode = get_config('block_ahotts_embhl', 'langmode') ?: 'fixed';
-        $configuredlang = (string) $this->plugin_config_language;
+        $configuredlang = $this->configlanguage;
         $offered = \block_ahotts_embhl\local\languages::offered();
         $piperenabled = \block_ahotts_embhl\local\languages::piper_enabled();
         $pocketttsenabled = \block_ahotts_embhl\local\languages::pockettts_enabled();
@@ -93,34 +104,21 @@ class block_ahotts_embhl extends block_base {
         // Only the modes that let the reading language change at runtime need
         // more than the resolved one.
         $codes = in_array($langmode, ['chooser', 'content'], true) ? $offered : [$defaultlang];
-        $languages = \block_ahotts_embhl\local\languages::build($codes, $configuredlang, $piperenabled,
-            $pocketttsenabled);
+        $languages = \block_ahotts_embhl\local\languages::build(
+            $codes,
+            $configuredlang,
+            $piperenabled,
+            $pocketttsenabled
+        );
 
         // No language has an engine that could speak it: offer nothing at all.
         if (!$languages) {
             return $this->content;
         }
 
-        // HTML code for the Listen button. The button is driven by JavaScript, so the
-        // link has no navigation target.
-        $listen_button_code = implode(PHP_EOL, [
-            '<div id="readspeaker_button1" class="rs_skip rsbtn rs_preserve rscompact">',
-            '   <a class="rsbtn_play" title="' . $listen_text_title . '" href="#" role="button">',
-            '       <span class="rsbtn_left rsimg rspart">',
-            '           <span class="rsbtn_text">',
-            '               <span>'. $listen_text . '</span>',
-            '           </span>',
-            '       </span>',
-            '       <span class="rsbtn_right rsimg rsplay rspart"></span>',
-            '   </a>',
-            '</div>'
-        ]);
-
-        $this->content->text .= $listen_button_code;
-
         // Build the configuration for the front-end TTS module.
         $labels = [
-            'listen' => $listen_text,
+            'listen' => $listentext,
             'loading' => get_string('loadingtext', 'block_ahotts_embhl'),
             'pause' => get_string('pausetext', 'block_ahotts_embhl'),
             'resume' => get_string('resumetext', 'block_ahotts_embhl'),
@@ -134,7 +132,7 @@ class block_ahotts_embhl extends block_base {
         ];
 
         $jsconfig = [
-            'readid' => $this->plugin_config_readid,
+            'readid' => $this->configreadid,
             'maxlen' => (int) (get_config('block_ahotts_embhl', 'maxtextlength') ?: 3000),
             'labels' => $labels,
             'langmode' => $langmode,
@@ -150,6 +148,7 @@ class block_ahotts_embhl extends block_base {
             'logurl' => (new moodle_url('/blocks/ahotts_embhl/clientlog.php'))->out(false),
             'sesskey' => sesskey(),
             'cmid' => $this->page->cm ? (int) $this->page->cm->id : 0,
+            'courseid' => (int) $this->page->course->id,
             // On a SCORM package or a book, the audio download reads the whole activity.
             'texturl' => \block_ahotts_embhl\local\activity_text::supports($this->page->cm)
                 ? \block_ahotts_embhl\local\activity_text::url($this->page->cm)->out(false) : '',
@@ -213,9 +212,49 @@ class block_ahotts_embhl extends block_base {
             'enginesunavailable' => get_string('status_enginesunavailable', 'block_ahotts_embhl'),
         ];
 
-        $this->page->requires->js_call_amd('block_ahotts_embhl/speech', 'init', [$jsconfig]);
+        // HTML code for the Listen button. The button is driven by JavaScript, so the
+        // link has no navigation target. Its configuration travels in a data attribute:
+        // it is too large for the arguments of js_call_amd().
+        $this->content->text .= implode(PHP_EOL, [
+            '<div id="readspeaker_button1" class="rs_skip rsbtn rs_preserve rscompact"'
+                . ' data-config="' . s(json_encode($jsconfig, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE)) . '">',
+            '   <a class="rsbtn_play" title="' . s($listentexttitle) . '" href="#" role="button">',
+            '       <span class="rsbtn_left rsimg rspart">',
+            '           <span class="rsbtn_text">',
+            '               <span>' . s($listentext) . '</span>',
+            '           </span>',
+            '       </span>',
+            '       <span class="rsbtn_right rsimg rsplay rspart"></span>',
+            '   </a>',
+            '</div>',
+        ]);
+
+        $this->page->requires->js_call_amd('block_ahotts_embhl/speech', 'init');
 
         return $this->content;
+    }
+
+    /**
+     * Link to the usage report, shown while editing to those who may see it.
+     *
+     * @return string HTML, or '' for nothing.
+     */
+    private function usage_link(): string {
+        if (!$this->page->user_is_editing()) {
+            return '';
+        }
+        $courseid = (int) $this->page->course->id;
+        if ($courseid == SITEID) {
+            $context = context_system::instance();
+            $url = new moodle_url('/blocks/ahotts_embhl/usage.php');
+        } else {
+            $context = context_course::instance($courseid);
+            $url = new moodle_url('/blocks/ahotts_embhl/usage.php', ['courseid' => $courseid]);
+        }
+        if (!has_capability('block/ahotts_embhl:viewusage', $context)) {
+            return '';
+        }
+        return html_writer::link($url, get_string('usagereport', 'block_ahotts_embhl'));
     }
 
     /**
@@ -230,14 +269,29 @@ class block_ahotts_embhl extends block_base {
         ];
     }
 
+    /**
+     * Each instance can override the reading language.
+     *
+     * @return bool
+     */
     public function instance_allow_config() {
         return true;
     }
 
+    /**
+     * The block has site-wide settings.
+     *
+     * @return bool
+     */
     public function has_config() {
         return true;
     }
 
+    /**
+     * Only one Listen button per page.
+     *
+     * @return bool
+     */
     public function instance_allow_multiple() {
         return false;
     }
@@ -268,171 +322,12 @@ class block_ahotts_embhl extends block_base {
         return true;
     }
 
+    /**
+     * The block can be added to every page type except tag pages.
+     *
+     * @return array
+     */
     public function applicable_formats() {
-        return array('all' => true, 'tag' => false);
-    }
-
-    /**
-     * Function replaces diacritic letters in the string with
-     * its regular analogues and returns "clear" string.
-     *
-     * @param string $str
-     * @return string
-     */
-    private function clear_letters($str)
-    {
-        $a = ['À', 'Á', 'Â', 'Ã', 'Ä', 'Å', 'Æ', 'Ç', 'È', 'É', 'Ê', 'Ë', 'Ì', 'Í', 'Î', 'Ï', 'Ð', 'Ñ', 'Ò', 'Ó', 'Ô', 'Õ', 'Ö', 'Ø', 'Ù', 'Ú', 'Û', 'Ü', 'Ý', 'ß', 'à', 'á', 'â', 'ã', 'ä', 'å', 'æ', 'ç', 'è', 'é', 'ê', 'ë', 'ì', 'í', 'î', 'ï', 'ñ', 'ò', 'ó', 'ô', 'õ', 'ö', 'ø', 'ù', 'ú', 'û', 'ü', 'ý', 'ÿ', 'Ā', 'ā', 'Ă', 'ă', 'Ą', 'ą', 'Ć', 'ć', 'Ĉ', 'ĉ', 'Ċ', 'ċ', 'Č', 'č', 'Ď', 'ď', 'Đ', 'đ', 'Ē', 'ē', 'Ĕ', 'ĕ', 'Ė', 'ė', 'Ę', 'ę', 'Ě', 'ě', 'Ĝ', 'ĝ', 'Ğ', 'ğ', 'Ġ', 'ġ', 'Ģ', 'ģ', 'Ĥ', 'ĥ', 'Ħ', 'ħ', 'Ĩ', 'ĩ', 'Ī', 'ī', 'Ĭ', 'ĭ', 'Į', 'į', 'İ', 'ı', 'Ĳ', 'ĳ', 'Ĵ', 'ĵ', 'Ķ', 'ķ', 'Ĺ', 'ĺ', 'Ļ', 'ļ', 'Ľ', 'ľ', 'Ŀ', 'ŀ', 'Ł', 'ł', 'Ń', 'ń', 'Ņ', 'ņ', 'Ň', 'ň', 'ŉ', 'Ō', 'ō', 'Ŏ', 'ŏ', 'Ő', 'ő', 'Œ', 'œ', 'Ŕ', 'ŕ', 'Ŗ', 'ŗ', 'Ř', 'ř', 'Ś', 'ś', 'Ŝ', 'ŝ', 'Ş', 'ş', 'Š', 'š', 'Ţ', 'ţ', 'Ť', 'ť', 'Ŧ', 'ŧ', 'Ũ', 'ũ', 'Ū', 'ū', 'Ŭ', 'ŭ', 'Ů', 'ů', 'Ű', 'ű', 'Ų', 'ų', 'Ŵ', 'ŵ', 'Ŷ', 'ŷ', 'Ÿ', 'Ź', 'ź', 'Ż', 'ż', 'Ž', 'ž', 'ſ', 'ƒ', 'Ơ', 'ơ', 'Ư', 'ư', 'Ǎ', 'ǎ', 'Ǐ', 'ǐ', 'Ǒ', 'ǒ', 'Ǔ', 'ǔ', 'Ǖ', 'ǖ', 'Ǘ', 'ǘ', 'Ǚ', 'ǚ', 'Ǜ', 'ǜ', 'Ǻ', 'ǻ', 'Ǽ', 'ǽ', 'Ǿ', 'ǿ'];
-        $b = ['A', 'A', 'A', 'A', 'A', 'A', 'AE', 'C', 'E', 'E', 'E', 'E', 'I', 'I', 'I', 'I', 'D', 'N', 'O', 'O', 'O', 'O', 'O', 'O', 'U', 'U', 'U', 'U', 'Y', 's', 'a', 'a', 'a', 'a', 'a', 'a', 'ae', 'c', 'e', 'e', 'e', 'e', 'i', 'i', 'i', 'i', 'n', 'o', 'o', 'o', 'o', 'o', 'o', 'u', 'u', 'u', 'u', 'y', 'y', 'A', 'a', 'A', 'a', 'A', 'a', 'C', 'c', 'C', 'c', 'C', 'c', 'C', 'c', 'D', 'd', 'D', 'd', 'E', 'e', 'E', 'e', 'E', 'e', 'E', 'e', 'E', 'e', 'G', 'g', 'G', 'g', 'G', 'g', 'G', 'g', 'H', 'h', 'H', 'h', 'I', 'i', 'I', 'i', 'I', 'i', 'I', 'i', 'I', 'i', 'IJ', 'ij', 'J', 'j', 'K', 'k', 'L', 'l', 'L', 'l', 'L', 'l', 'L', 'l', 'l', 'l', 'N', 'n', 'N', 'n', 'N', 'n', 'n', 'O', 'o', 'O', 'o', 'O', 'o', 'OE', 'oe', 'R', 'r', 'R', 'r', 'R', 'r', 'S', 's', 'S', 's', 'S', 's', 'S', 's', 'T', 't', 'T', 't', 'T', 't', 'U', 'u', 'U', 'u', 'U', 'u', 'U', 'u', 'U', 'u', 'U', 'u', 'W', 'w', 'Y', 'y', 'Y', 'Z', 'z', 'Z', 'z', 'Z', 'z', 's', 'f', 'O', 'o', 'U', 'u', 'A', 'a', 'I', 'i', 'O', 'o', 'U', 'u', 'U', 'u', 'U', 'u', 'U', 'u', 'U', 'u', 'A', 'a', 'AE', 'ae', 'O', 'o'];
-        return str_replace($a, $b, $str);
-    }
-
-    /**
-     * Function for converting a ReadSpeaker language code to Moodle language,
-     * provide Moodle language code (ISO 639-1), returns ReadSpeaker lang-code (xx_yy).
-     *
-     * @param string $lang
-     * @return string
-     */
-    private function moodle_to_rslang($lang) {
-        // Define a list of supported ISO 639-1 to ReadSpeaker lang-codes
-        $langlist = [
-            'af' => 'af_za',
-            'ar' => 'ar_ar',
-            'bg' => 'bg_bg',
-            'en' => 'en_us',
-            'ca' => 'ca_es',
-            'ca_valencia' => 'vl_es',
-            'cz' => 'cs_cz',
-            'cy' => 'cy_cy',
-            'de' => 'de_de',
-            'da' => 'da_dk',
-            'el' => 'el_gr',
-            'es' => 'es_es',
-            'et' => 'et_ee',
-            'eu' => 'eu_es',
-            'fi' => 'fi_fi',
-            'fr' => 'fr_fr',
-            'fo' => 'fo_fo',
-            'fy' => 'fy_nl',
-            'gl' => 'gl_es',
-            'he' => 'he_il',
-            'hi' => 'hi_in',
-            'hr' => 'hr_hr',
-            'it' => 'it_it',
-            'is' => 'is_is',
-            'ja' => 'ja_jp',
-            'ko' => 'ko_kr',
-            'lt' => 'lt_lt',
-            'nl' => 'nl_nl',
-            'nb' => 'no_nb',
-            'nd' => 'nr_za',
-            'nr' => 'nr_za',
-            'nn' => 'no_nn',
-            'pl' => 'pl_pl',
-            'pt' => 'pt_pt',
-            'ro' => 'ro_ro',
-            'ru' => 'ru_ru',
-            'ss' => 'ss_za',
-            'sv' => 'sv_se',
-            'tn' => 'tn_za',
-            'tr' => 'tr_tr',
-            'ts' => 'ts_za',
-            'uk' => 'uk_ua',
-            've' => 've_za',
-            'zh' => 'zh_cn',
-            'zh_cn' => 'zh_cn',
-            'yue' => 'zh_hk',
-            'zh_tw' => 'zh_tw',
-            'nan' => 'zh_tw',
-            'xh' => 'xh_za',
-            'zu' => 'zu_za'
-        ];
-
-        // Check if language map exists and return Moodle language code.
-        if (isset($langlist[$lang])) {
-            return $langlist[$lang];
-        }
-        // If there is no language found for the entire code, only look at the two first characters in case it is a shortcode.
-        if (isset($langlist[substr($lang, 0, 2)])) {
-            return $langlist[substr($lang, 0, 2)];
-        }
-
-        // If not found, return the default English value.
-        return $langlist['en'];
-    }
-
-    /**
-     * Function for checking if theme has supported improved reading rules, curently only snap and boost.
-     * Uses pre-set list of themes that have improved reading. Returns true correct and false otherwise.
-     *
-     * @param string $theme
-     * @return boolean
-     */
-    private function improved_reading_theme($theme) {
-        $theme_list = [
-            'snap',
-            'boost'
-        ];
-        return in_array($theme, $theme_list);
-    }
-
-    /**
-     * Function to create the statistics format for webReader.
-     *
-     * @return string $final_format
-     */
-    private function statistics_format() {
-
-        global $PAGE;
-
-        // Retrieve all breadcrumb items.
-        $breadcrumbs = $PAGE->navbar->get_items();
-
-        // Initialize an array to store breadcrumb text.
-        $breadcrumb_texts = [];
-        $context = $PAGE->context;
-        
-        // Check if we are in a course context and the course ID is not 1 (site context).
-        if (($context->contextlevel == CONTEXT_COURSE || $context->contextlevel == CONTEXT_MODULE) && isset($COURSE) && $COURSE->id != 1) {
-            // Start from the third element (index 2) if in a course context.
-            $start_index = 2;
-        } else {
-            // Otherwise, start from the beginning.
-            $start_index = 0;
-        }
-
-        // Loop through each breadcrumb item, starting at the appropriate index.
-        foreach ($breadcrumbs as $index => $breadcrumb) {
-            // Skip the first two elements if in a course context.
-            if ($index < $start_index) {
-                continue;
-            }
-
-            // Get the text content of the breadcrumb.
-            $text = $breadcrumb->get_content();
-
-            // Add the text to the breadcrumb array.
-            $breadcrumb_texts[] = $text;
-        }
-
-        // Join all breadcrumb texts with a separator.
-        $breadcrumb_string = implode('/', $breadcrumb_texts);
-        $decoded_text = html_entity_decode($breadcrumb_string, ENT_QUOTES | ENT_HTML5);
-
-        $stats_name = preg_replace('/\s+/', '_', $decoded_text);
-
-        $host = $_SERVER['HTTP_HOST'];
-        $hostParts = explode('.', $host);
-
-        // Check if there are more than two parts (indicating a subdomain exists).
-        if (count($hostParts) > 2) {
-            $subdomain = $hostParts[0];
-        } else {
-            $subdomain = null;
-        }
-
-        $final_format = $subdomain. '/' . $stats_name;
-
-        return $final_format;
+        return ['all' => true, 'tag' => false];
     }
 }

@@ -48,7 +48,7 @@ The language of each course comes, in order, from `--language`,
 SCORM titles. Ambiguous courses are skipped and reported, never guessed.
 Existing instances, exceptions and inherited blocks are never deleted. See
 [cli/USAGE.txt](cli/USAGE.txt) for the full procedure, and
-`cli/test_course_language.php` for the detection tests, which need no database.
+`tests/course_language_test.php` for the detection tests (PHPUnit).
 
 Downloading audio for offline listening
 --------------------------------------
@@ -104,6 +104,29 @@ voice/runtime files or the API. The playback character cap does not truncate
 exports. External content that cannot be collected is announced as usual;
 hidden pages of a SCORM package are not part of the received text. Generation
 errors do not produce a partial file. Long exports take time and browser memory.
+
+Usage report
+------------
+
+*Site administration → Reports → Listen button usage* shows, month by month,
+how many times pages were **read** with the Listen button and how many times
+the **audio** and **PDFs** were downloaded, with a chart, the totals of the
+last 12, 24 or 36 months, and one month course by course. Teachers open the
+report of their own course from the link the block shows in editing mode.
+The totals can be downloaded as CSV, Excel or ODS.
+
+- A reading is counted when the Listen button starts reading a page that has
+  text; an audio download when the audio file is saved; a PDF download when a PDF is
+  saved with the block.
+- The browser reports each one to `clientlog.php`, which checks the user's
+  access to the course or activity and the session key.
+- Each one triggers a Moodle event (*Content listened to*, *Audio downloaded*,
+  *PDF downloaded*), so it also shows in the site logs with its user, and adds
+  one to a monthly total per course in `block_ahotts_embhl_usage`. Those totals
+  hold no personal data, use the server timezone, and are not deleted with the
+  logs.
+- Capability `block/ahotts_embhl:viewusage`: managers (whole site) and editing
+  teachers (their course).
 
 Requirements
 ------------
@@ -596,10 +619,10 @@ npm install
 npm test
 ```
 
-Course language detection (no database needed):
+Course language detection (PHPUnit, from the Moodle root):
 
 ```bash
-php blocks/ahotts_embhl/cli/test_course_language.php
+vendor/bin/phpunit blocks/ahotts_embhl/tests/course_language_test.php
 ```
 
 The JavaScript suite covers an ordinary Moodle page, a same-origin SCORM package,

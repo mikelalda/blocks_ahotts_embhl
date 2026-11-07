@@ -14,22 +14,31 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+namespace block_ahotts_embhl\event;
+
 /**
- * ReadSpeakers webReader for Moodle block.
+ * A PDF was downloaded with the Listen block.
  *
  * @package    block_ahotts_embhl
- * @copyright  2016 ReadSpeaker <info@readspeaker.com>
- * @author     Richard Risholm
+ * @copyright  2026 Ahotts
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
+class pdf_downloaded extends usage_base {
+    /**
+     * Name of the event, for the logs.
+     *
+     * @return string
+     */
+    public static function get_name() {
+        return get_string('eventpdfdownloaded', 'block_ahotts_embhl');
+    }
 
-defined('MOODLE_INTERNAL') || die();
-
-$definitions = array(
-    'readspeaker_tokens' => array(
-        'mode' => cache_store::MODE_APPLICATION,
-        'ttl' => 60,
-        'maxsize' => 100,
-        'canuselocalstore' => false
-    )
-);
+    /**
+     * What happened, for the logs.
+     *
+     * @return string
+     */
+    public function get_description() {
+        return "The user with id '$this->userid' downloaded a PDF of the content in the context with id '$this->contextid'.";
+    }
+}

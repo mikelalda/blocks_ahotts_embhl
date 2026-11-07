@@ -39,13 +39,10 @@
 
 namespace block_ahotts_embhl\local;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Rewrites connected Rise packages and keeps the proxy's list of courses.
  */
 class rise_proxy {
-
     /** @var string Where Articulate hosts the courses and the LMS driver. */
     const UPSTREAM = 'https://packages.articulateusercontent.com';
 
@@ -135,9 +132,15 @@ class rise_proxy {
      * @return string
      */
     public static function restore(string $html, string $origin): string {
-        return str_replace($origin . '/content/', self::UPSTREAM . '/content/',
-            str_replace('"REMOTE_PACKAGES_CDN_URL":"' . $origin . '"',
-                '"REMOTE_PACKAGES_CDN_URL":"' . self::UPSTREAM . '"', $html));
+        return str_replace(
+            $origin . '/content/',
+            self::UPSTREAM . '/content/',
+            str_replace(
+                '"REMOTE_PACKAGES_CDN_URL":"' . $origin . '"',
+                '"REMOTE_PACKAGES_CDN_URL":"' . self::UPSTREAM . '"',
+                $html
+            )
+        );
     }
 
     /**
@@ -165,7 +168,7 @@ class rise_proxy {
             'filepath' => '/',
             'filename' => 'indexAPI.html',
         ]);
-        return array_map(function($record) use ($fs) {
+        return array_map(function ($record) use ($fs) {
             return $fs->get_file_instance($record);
         }, array_values($records));
     }
@@ -253,7 +256,7 @@ class rise_proxy {
     public static function write_allowed(array $ids): void {
         $path = self::allowlist_path();
         check_dir_exists(dirname($path));
-        $ids = array_values(array_unique(array_filter($ids, function($id) {
+        $ids = array_values(array_unique(array_filter($ids, function ($id) {
             return (bool) preg_match('~^' . self::ID_PATTERN . '$~', $id);
         })));
         sort($ids);

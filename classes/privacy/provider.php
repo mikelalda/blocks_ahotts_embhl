@@ -25,20 +25,21 @@
 
 namespace block_ahotts_embhl\privacy;
 
-class provider implements
-    // This plugin does not store any personal user data.
-    \core_privacy\local\metadata\null_provider {
-
-	// For legacy purposes
-    use \core_privacy\local\legacy_polyfill;
-
+/**
+ * Privacy provider: the block stores no personal data.
+ *
+ * @package    block_ahotts_embhl
+ * @copyright  2016 ReadSpeaker <info@readspeaker.com>
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+class provider implements \core_privacy\local\metadata\null_provider {
     /**
      * Get the language string identifier with the component's language
      * file to explain why this plugin stores no data.
      *
      * @return  string
      */
-    public static function get_reason() : string {
+    public static function get_reason(): string {
         return 'privacy:metadata';
     }
 }

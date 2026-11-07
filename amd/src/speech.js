@@ -46,7 +46,7 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-import {applyRate, createAudioSink, createPiperEngine, toPcm16} from './piper';
+import {applyRate, createAudioSink, createPiperEngine, ignoreFailure, toPcm16} from './piper';
 import {createPocketTtsEngine, unlockAudio} from './pockettts';
 
 const STATE_IDLE = 'idle';
@@ -270,8 +270,8 @@ const splitText = (raw) => {
  */
 const pdfUrlFor = (element) => {
     const tag = element.tagName.toLowerCase();
-    const raw = tag === 'object' ? element.getAttribute('data')
-        : (tag === 'a' ? element.getAttribute('href') : element.getAttribute('src'));
+    const attribute = {object: 'data', a: 'href'}[tag] || 'src';
+    const raw = element.getAttribute(attribute);
     if (!raw && tag !== 'iframe' && tag !== 'frame') {
         return '';
     }
@@ -497,18 +497,82 @@ const createBridgeClient = (options) => {
         entry.resolve(value);
     };
 
-    const onMessage = (event) => {
+    /**
+     * Whether a message event speaks our protocol, from an origin the administrator allows.
+     *
+     * @param {MessageEvent} event
+     * @return {Boolean}
+     */
+    const isProtocolMessage = (event) => {
         const data = event.data;
         if (!data || typeof data !== 'object' || data.protocol !== PROTOCOL) {
-            return;
+            return false;
         }
         if (data.v !== PROTOCOL_VERSION || typeof data.type !== 'string') {
-            return;
+            return false;
         }
         // The sender has to be a window we registered, from an allowed origin.
-        if (!originAllowed(event.origin, allowedOrigins)) {
+        return originAllowed(event.origin, allowedOrigins);
+    };
+
+    /**
+     * The well-formed chunks a bridge sent, remembered as that bridge's own.
+     *
+     * @param {Object} connection
+     * @param {Array} list
+     * @return {Array} [{id, text}]
+     */
+    const validChunks = (connection, list) => {
+        const chunks = [];
+        list.forEach((chunk) => {
+            if (!chunk || typeof chunk !== 'object') {
+                return;
+            }
+            if (typeof chunk.id !== 'string' || !CHUNK_ID_PATTERN.test(chunk.id)) {
+                return;
+            }
+            if (typeof chunk.text !== 'string') {
+                return;
+            }
+            const text = chunk.text.replace(/\s+/g, ' ').trim();
+            if (!text) {
+                return;
+            }
+            connection.chunkIds.add(chunk.id);
+            chunks.push({id: chunk.id, text: text});
+        });
+        return chunks;
+    };
+
+    /**
+     * Settle the request a connected bridge is answering.
+     *
+     * @param {Object} connection
+     * @param {Object} data
+     */
+    const onReply = (connection, data) => {
+        if (typeof data.requestId !== 'string' || !pending.has(data.requestId)) {
             return;
         }
+        const entry = pending.get(data.requestId);
+        if (entry.connection !== connection) {
+            return;
+        }
+
+        if (data.type === 'chunks' && Array.isArray(data.chunks)) {
+            settle(data.requestId, validChunks(connection, data.chunks));
+        } else if (data.type === 'ack') {
+            settle(data.requestId, !!data.ok);
+        } else if (data.type === 'error') {
+            settle(data.requestId, null);
+        }
+    };
+
+    const onMessage = (event) => {
+        if (!isProtocolMessage(event)) {
+            return;
+        }
+        const data = event.data;
 
         if (data.type === 'ready') {
             announced.add(event.source);
@@ -549,45 +613,7 @@ const createBridgeClient = (options) => {
             return;
         }
 
-        if (typeof data.requestId !== 'string' || !pending.has(data.requestId)) {
-            return;
-        }
-        const entry = pending.get(data.requestId);
-        if (entry.connection !== connection) {
-            return;
-        }
-
-        if (data.type === 'chunks' && Array.isArray(data.chunks)) {
-            const chunks = [];
-            data.chunks.forEach((chunk) => {
-                if (!chunk || typeof chunk !== 'object') {
-                    return;
-                }
-                if (typeof chunk.id !== 'string' || !CHUNK_ID_PATTERN.test(chunk.id)) {
-                    return;
-                }
-                if (typeof chunk.text !== 'string') {
-                    return;
-                }
-                const text = chunk.text.replace(/\s+/g, ' ').trim();
-                if (!text) {
-                    return;
-                }
-                connection.chunkIds.add(chunk.id);
-                chunks.push({id: chunk.id, text: text});
-            });
-            settle(data.requestId, chunks);
-            return;
-        }
-
-        if (data.type === 'ack') {
-            settle(data.requestId, !!data.ok);
-            return;
-        }
-
-        if (data.type === 'error') {
-            settle(data.requestId, null);
-        }
+        onReply(connection, data);
     };
 
     win.addEventListener('message', onMessage, false);
@@ -684,7 +710,7 @@ const createBridgeClient = (options) => {
                 const entryResolve = (value) => done(value || null);
                 pending.set(connection.handshakeId, {
                     resolve: entryResolve,
-                    timer: window.setTimeout(() => {}, 0),
+                    timer: null,
                     connection: connection
                 });
 
@@ -822,7 +848,7 @@ const apiEngine = (api) => {
         },
         resume: () => {
             if (audio) {
-                audio.play().catch(() => {});
+                audio.play().catch(ignoreFailure);
             }
         },
         stop: () => {
@@ -879,7 +905,9 @@ const webSpeechEngine = (lang) => {
                 resolveEnd = null;
             }
         },
-        release: () => {},
+        release: () => {
+            // The browser's own voices hold nothing to free.
+        },
         setRate: (value) => {
             rate = Number(value) || 1;
         },
@@ -1014,9 +1042,103 @@ const adaptLegacyConfig = (config) => {
 };
 
 /**
- * Initialise the Listen button behaviour.
+ * The configuration with its optional sections filled in, so that the button
+ * code reads them without guarding every access.
  *
  * @param {Object} config
+ * @return {Object}
+ */
+const withDefaults = (config) => {
+    const section = (name) => config[name] || {};
+    const engine = (name) => Object.assign({}, section(name), {
+        voices: section(name).voices || [],
+        defaults: section(name).defaults || {},
+    });
+    return Object.assign({}, config, {
+        labels: section('labels'),
+        status: section('status'),
+        bridge: section('bridge'),
+        rate: section('rate'),
+        piper: engine('piper'),
+        pockettts: engine('pockettts'),
+        packagepdfs: config.packagepdfs || [],
+        texturl: config.texturl || '',
+        exporter: section('exporter'),
+    });
+};
+
+/**
+ * The client of the cross-origin bridge, when the administrator enabled it for some origins.
+ *
+ * @param {Object} bridgeConfig {enabled, origins, timeout}
+ * @return {Object|null}
+ */
+const bridgeFor = (bridgeConfig) => {
+    if (!bridgeConfig.enabled || !bridgeConfig.origins || !bridgeConfig.origins.length) {
+        return null;
+    }
+    return createBridgeClient({
+        win: window,
+        allowedOrigins: bridgeConfig.origins,
+        timeout: bridgeConfig.timeout || 2500
+    });
+};
+
+/**
+ * An audio context for decoding the fragments of an export.
+ *
+ * @return {AudioContext}
+ */
+const exportAudioContext = () => {
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+    if (!AudioContextClass) {
+        throw new Error('Audio decoding unavailable');
+    }
+    // Piper speaks at 22050 Hz: decoding at that rate, rather than the
+    // sound card's, keeps a long course within the browser's memory.
+    try {
+        return new AudioContextClass({sampleRate: EXPORT_SAMPLE_RATE});
+    } catch (e) {
+        return new AudioContextClass();
+    }
+};
+
+/**
+ * Average the channels of a decoded buffer into one.
+ *
+ * @param {AudioBuffer} buffer
+ * @return {Float32Array}
+ */
+const mixDown = (buffer) => {
+    const samples = new Float32Array(buffer.length);
+    for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
+        const data = buffer.getChannelData(channel);
+        for (let j = 0; j < samples.length; j++) {
+            samples[j] += data[j] / buffer.numberOfChannels;
+        }
+    }
+    return samples;
+};
+
+/**
+ * The page title, made safe for a file name.
+ *
+ * @return {String}
+ */
+const fileTitle = () => (document.title || 'audio').replace(/[^\p{L}\p{N}_-]+/gu, '-').slice(0, 80) || 'audio';
+
+/**
+ * A short description of an error for the server log.
+ *
+ * @param {*} error
+ * @return {String}
+ */
+const describeError = (error) => ((error && error.name) || 'Error') + ': ' + ((error && error.message) || error);
+
+/**
+ * Initialise the Listen button behaviour.
+ *
+ * @param {Object} [config]        Read from the button's data-config attribute when omitted.
  * @param {String} config.readid    Id of the element whose text is read.
  * @param {Number} config.maxlen    Overall character cap across all chunks.
  * @param {Object} config.labels    Button labels (listen, loading, pause, resume, stop, language, voice, rate).
@@ -1042,13 +1164,20 @@ export const init = (config) => {
     if (!link) {
         return;
     }
+    if (!config) {
+        // The block hands its configuration over in a data attribute of the button.
+        try {
+            config = JSON.parse(button.dataset.config || '{}');
+        } catch (e) {
+            return;
+        }
+    }
 
-    config = adaptLegacyConfig(config);
+    config = withDefaults(adaptLegacyConfig(config));
 
     const labelNode = button.querySelector('.rsbtn_text span');
-    const messages = config.status || {};
-    const bridgeConfig = config.bridge || {};
-    const piperConfig = config.piper || {};
+    const messages = config.status;
+    const piperConfig = config.piper;
 
     const STORAGE_LANGUAGE = 'block_ahotts_embhl_language';
     const STORAGE_VOICE = 'block_ahotts_embhl_voice';
@@ -1057,12 +1186,12 @@ export const init = (config) => {
     if (!language) {
         return;
     }
-    const pocketConfig = config.pockettts || {};
+    const pocketConfig = config.pockettts;
     // Every local voice, tagged with the engine that speaks it. The neural
     // voices come first: where a language has both, they are the better ones.
-    const localVoices = (pocketConfig.voices || []).map((voice) => Object.assign({kind: 'pockettts'}, voice))
-        .concat((piperConfig.voices || []).map((voice) => Object.assign({kind: 'piper'}, voice)));
-    const localDefaults = {pockettts: pocketConfig.defaults || {}, piper: piperConfig.defaults || {}};
+    const localVoices = pocketConfig.voices.map((voice) => Object.assign({kind: 'pockettts'}, voice))
+        .concat(piperConfig.voices.map((voice) => Object.assign({kind: 'piper'}, voice)));
+    const localDefaults = {pockettts: pocketConfig.defaults, piper: piperConfig.defaults};
     // What the reader picked, per language, for as long as the page lives.
     const chosenVoices = {};
 
@@ -1239,17 +1368,11 @@ export const init = (config) => {
     button.parentNode.insertBefore(status, button.nextSibling);
 
     const setStatus = (text) => {
-        // textContent only: nothing that reaches here is ever treated as markup.
+        // Only textContent: nothing that reaches here is ever treated as markup.
         status.textContent = text || '';
     };
 
-    const bridge = bridgeConfig.enabled && bridgeConfig.origins && bridgeConfig.origins.length
-        ? createBridgeClient({
-            win: window,
-            allowedOrigins: bridgeConfig.origins,
-            timeout: bridgeConfig.timeout || 2500
-        })
-        : null;
+    const bridge = bridgeFor(config.bridge);
 
     // Resolves immediately unless paused, in which case it waits for resume/stop.
     const waitWhilePaused = () => {
@@ -1280,7 +1403,7 @@ export const init = (config) => {
      */
     let engineNotice = '';
     let engineKind = '';
-    const resolveEngine = async (entry, downloadable = false) => {
+    const resolveEngine = async(entry, downloadable = false) => {
         engineNotice = '';
         engineKind = '';
         // A reader who picked a Piper voice gets it, not the neural one.
@@ -1302,7 +1425,7 @@ export const init = (config) => {
             const progress = (fraction) => setStatus(
                 (messages.preparingvoiceprogress || messages.preparingvoice || '')
                     .replace('{percent}', String(Math.round(fraction * 100))));
-            /* eslint-disable-next-line no-await-in-loop */
+
             const ready = await engine.warmup(progress);
             if (ready) {
                 setStatus('');
@@ -1363,7 +1486,7 @@ export const init = (config) => {
         const label = document.createElement('label');
         label.className = 'mr-1 mb-0 small';
         label.setAttribute('for', id);
-        label.textContent = text;
+        label.textContent = text || '';
 
         const select = document.createElement('select');
         select.id = id;
@@ -1398,7 +1521,7 @@ export const init = (config) => {
     if (config.langmode === 'chooser' && config.languages.length > 1) {
         addSelect(
             'ahotts-language',
-            config.labels.language || '',
+            config.labels.language,
             config.languages.map((entry) => ({value: entry.code, label: entry.label || entry.code})),
             language.code,
             (value) => {
@@ -1413,7 +1536,7 @@ export const init = (config) => {
     if ((piperConfig.chooser || pocketConfig.chooser) && localVoices.length > 1) {
         voiceControl = addSelect(
             'ahotts-voice',
-            config.labels.voice || '',
+            config.labels.voice,
             voicesFor(language.code).map((voice) => ({value: voice.id, label: voice.label || voice.id})),
             voiceIdFor(language.code),
             (value) => {
@@ -1428,12 +1551,18 @@ export const init = (config) => {
     // Reading speed: the reader's choice, kept across pages, applied to
     // whichever engine is speaking.
     const STORAGE_RATE = 'block_ahotts_embhl_rate';
-    const rateConfig = config.rate || {};
+    const rateConfig = config.rate;
     const rateOptions = (rateConfig.options || []).map(Number).filter((value) => value >= 0.5 && value <= 2);
     const knownRate = (value) => value !== '' && rateOptions.indexOf(Number(value)) !== -1;
-    const storedRate = readStored(STORAGE_RATE);
-    // A speed remembered from the menu only counts while there is a menu to change it back.
-    let rate = rateConfig.chooser && knownRate(storedRate) ? Number(storedRate) : (Number(rateConfig.default) || 1);
+    const initialRate = () => {
+        const storedRate = readStored(STORAGE_RATE);
+        // A speed remembered from the menu only counts while there is a menu to change it back.
+        if (rateConfig.chooser && knownRate(storedRate)) {
+            return Number(storedRate);
+        }
+        return Number(rateConfig.default) || 1;
+    };
+    let rate = initialRate();
 
     const applyRateTo = (engine) => {
         if (engine && engine.setRate) {
@@ -1451,7 +1580,7 @@ export const init = (config) => {
         };
         addSelect(
             'ahotts-rate',
-            config.labels.rate || '',
+            config.labels.rate,
             rateOptions.map((value) => ({value: String(value), label: formatRate(value)})),
             String(rate),
             (value) => {
@@ -1499,7 +1628,7 @@ export const init = (config) => {
      * @param {Boolean} limited Apply the playback character limit.
      * @return {Promise<Object>}
      */
-    const collectChunks = async (limited = true) => {
+    const collectChunks = async(limited = true) => {
         const root = document.getElementById(config.readid) || document.body;
         const items = [];
         collectFrom(root, items, {
@@ -1516,14 +1645,14 @@ export const init = (config) => {
             if (!bridge) {
                 blocked = frames.length;
             } else {
-                await Promise.all(frames.map((item) => bridge.connect(item.frame)
-                    .then((connection) => {
-                        if (connection) {
-                            connected.set(item.frame, connection);
-                        } else {
-                            blocked += 1;
-                        }
-                    })));
+                await Promise.all(frames.map(async(item) => {
+                    const connection = await bridge.connect(item.frame);
+                    if (connection) {
+                        connected.set(item.frame, connection);
+                    } else {
+                        blocked += 1;
+                    }
+                }));
             }
         }
 
@@ -1556,7 +1685,7 @@ export const init = (config) => {
             if (!connection) {
                 continue;
             }
-            /* eslint-disable-next-line no-await-in-loop */
+
             const remote = await bridge.collect(connection);
             remote.forEach((chunk) => {
                 push({kind: 'remote', connection: connection, chunkId: chunk.id, text: chunk.text});
@@ -1574,7 +1703,7 @@ export const init = (config) => {
     let downloadButtons = [];
     // The server lists the SCORM package PDFs best first (the one it builds from
     // the package, then those the package ships); only same-origin ones are usable.
-    const packagePdf = (config.packagepdfs || []).find((pdf) => {
+    const packagePdf = config.packagepdfs.find((pdf) => {
         try {
             return pdf && pdf.url && new URL(pdf.url, window.location.href).origin === window.location.origin;
         } catch (e) {
@@ -1582,16 +1711,19 @@ export const init = (config) => {
         }
     }) || null;
     // On a SCORM package or a book, where the whole activity is read from for audio exports.
-    const courseText = config.texturl || '';
+    const courseText = config.texturl;
 
     /**
-     * Tell the server how an audio export went: it runs in the browser, and
-     * would otherwise leave no trace when it fails.
+     * Tell the server what happened in the browser: readings and downloads, for
+     * the usage report, and how an audio export went, which would otherwise
+     * leave no trace when it fails.
      *
-     * @param {String} event exportstart, exportdone, exporterror, exportcancel, exportempty or exportnoengine.
+     * @param {String} event listen, pdfdownload, exportstart, exportdone, exporterror, exportcancel,
+     *     exportempty or exportnoengine.
      * @param {String} detail
+     * @param {Object} extra {lang, source}: reading language, and where a PDF came from.
      */
-    const report = (event, detail) => {
+    const report = (event, detail, extra = {}) => {
         if (!config.logurl) {
             return;
         }
@@ -1599,13 +1731,16 @@ export const init = (config) => {
             const body = new URLSearchParams({
                 sesskey: config.sesskey || '',
                 cmid: String(config.cmid || 0),
+                courseid: String(config.courseid || 0),
                 event: event,
                 detail: String(detail || '').slice(0, 800),
+                lang: extra.lang || '',
+                source: extra.source || '',
             });
             if (navigator.sendBeacon) {
                 navigator.sendBeacon(config.logurl, body);
             } else {
-                fetch(config.logurl, {method: 'POST', body: body, credentials: 'same-origin'}).catch(() => {});
+                fetch(config.logurl, {method: 'POST', body: body, credentials: 'same-origin'}).catch(ignoreFailure);
             }
         } catch (e) {
             // Reporting must never break the export.
@@ -1617,7 +1752,7 @@ export const init = (config) => {
      *
      * @return {Promise<Object|null>} {chunks, blocked}, or null to fall back to the screen.
      */
-    const collectCourseText = async () => {
+    const collectCourseText = async() => {
         setStatus(messages.readingactivity || '');
         try {
             const response = await fetch(courseText, {credentials: 'same-origin'});
@@ -1646,18 +1781,21 @@ export const init = (config) => {
         unhighlightChunk(currentChunk);
         currentChunk = null;
         state = STATE_IDLE;
-        downloadButtons.forEach((button) => { button.disabled = false; });
+        downloadButtons.forEach((button) => {
+            button.disabled = false;
+        });
         paused = false;
         gateResolve = null;
         stopButton.style.display = 'none';
         setLabel(config.labels.listen);
     };
 
-    const playChunks = async () => {
-        stopped = false;
-        setLabel(config.labels.loading);
-        setStatus('');
-
+    /**
+     * Find an engine and the text to read, telling the reader what is missing.
+     *
+     * @return {Promise<Array|null>} The chunks to read, or null when there is nothing to play.
+     */
+    const prepareReading = async() => {
         const notices = [];
         activeEngine = await resolveEngine(language);
         if (engineNotice) {
@@ -1666,12 +1804,10 @@ export const init = (config) => {
         if (!activeEngine) {
             notices.push(messages.enginesunavailable || '');
             setStatus(notices.filter(Boolean).join(' '));
-            finish();
-            return;
+            return null;
         }
         if (stopped) {
-            finish();
-            return;
+            return null;
         }
 
         const collected = await collectChunks();
@@ -1685,10 +1821,21 @@ export const init = (config) => {
             notices.push(messages.nocontent || '');
         }
         setStatus(notices.filter(Boolean).join(' '));
-        if (!chunks.length) {
+        return chunks.length ? chunks : null;
+    };
+
+    const playChunks = async() => {
+        stopped = false;
+        setLabel(config.labels.loading);
+        setStatus('');
+
+        const chunks = await prepareReading();
+        if (!chunks) {
             finish();
             return;
         }
+        // There is something to read: count it in the usage report.
+        report('listen', '', {lang: language.code});
 
         const engine = activeEngine;
 
@@ -1744,169 +1891,176 @@ export const init = (config) => {
         finish();
     };
 
+    const addControl = (tag, classname, text) => {
+        const node = document.createElement(tag);
+        if (tag === 'button') {
+            node.type = 'button';
+        }
+        node.className = classname;
+        node.textContent = text || '';
+        controls.appendChild(node);
+        return node;
+    };
+    const downloadButton = addControl('button', 'ahotts-download btn btn-secondary btn-sm mt-1', config.labels.download);
+    const pdfFileDownloadButton = addControl('button', 'ahotts-download-pdf-file btn btn-secondary btn-sm mt-1',
+        config.labels.downloadpdffile);
+    downloadButtons = [downloadButton, pdfFileDownloadButton];
     // Keep the completed file available for an explicit save, including browsers
     // that block an automatic download after a long synthesis operation.
-    const downloadButton = document.createElement('button');
-    downloadButton.type = 'button';
-    downloadButton.className = 'ahotts-download btn btn-secondary btn-sm mt-1';
-    downloadButton.textContent = config.labels.download || '';
-    controls.appendChild(downloadButton);
-    const pdfFileDownloadButton = document.createElement('button');
-    pdfFileDownloadButton.type = 'button';
-    pdfFileDownloadButton.className = 'ahotts-download-pdf-file btn btn-secondary btn-sm mt-1';
-    pdfFileDownloadButton.textContent = config.labels.downloadpdffile || '';
-    controls.appendChild(pdfFileDownloadButton);
-    downloadButtons = [downloadButton, pdfFileDownloadButton];
-    const saveLink = document.createElement('a');
-    saveLink.className = 'ahotts-save btn btn-link btn-sm';
-    saveLink.textContent = config.labels.saveaudio || '';
+    const saveLink = addControl('a', 'ahotts-save btn btn-link btn-sm', config.labels.saveaudio);
     saveLink.hidden = true;
-    controls.appendChild(saveLink);
 
-    const startDownload = async () => {
+    /**
+     * Lock or unlock the controls while an audio file is being built.
+     *
+     * @param {Boolean} busy
+     */
+    const setExporting = (busy) => {
+        downloading = busy;
+        downloadButtons.forEach((button) => {
+            button.disabled = busy;
+        });
+        controls.querySelectorAll('select').forEach((select) => {
+            select.disabled = busy;
+        });
+        stopButton.style.display = busy ? '' : 'none';
+    };
+
+    /**
+     * Synthesise one fragment of an export and decode it.
+     *
+     * @param {Object} engine
+     * @param {AudioContext} context
+     * @param {String} text
+     * @return {Promise<Float32Array|null>} Its samples, or null when the export was stopped.
+     */
+    const exportFragment = async(engine, context, text) => {
+        let token = null;
+        try {
+            // An engine that streams its playback has a separate call for a whole file.
+            token = await (engine.prepareFile ? engine.prepareFile(text) : engine.prepare(text));
+            if (stopped) {
+                return null;
+            }
+            const response = await fetch(token);
+            if (!response.ok) {
+                throw new Error('Audio fetch failed');
+            }
+            // The decodeAudioData() call resamples all fragments to context.sampleRate.
+            return mixDown(await context.decodeAudioData(await response.arrayBuffer()));
+        } finally {
+            if (token !== null) {
+                engine.release(token);
+            }
+        }
+    };
+
+    const elapsed = (job) => Math.round((Date.now() - job.started) / 1000);
+
+    /**
+     * Build the audio file of the page, or of the whole activity, and offer it.
+     *
+     * @param {Object} job {context, sink, current, total, started}, kept up to date for the caller.
+     */
+    const runExport = async(job) => {
+        const engine = await resolveEngine(language, true);
+        if (stopped) {
+            return;
+        }
+        if (!engine) {
+            report('exportnoengine', 'language=' + language.code);
+            setStatus(messages.downloadunavailable);
+            return;
+        }
+        // Exports bypass the playback cap. A SCORM package or a book is read
+        // whole, from the server; anything else as the screen shows it.
+        const course = courseText ? await collectCourseText() : null;
+        const collected = course || await collectChunks(false);
+        if (stopped) {
+            return;
+        }
+        const texts = collected.chunks.map((chunk) => chunk.text);
+        job.total = texts.length;
+        if (!job.total) {
+            report('exportempty', 'blocked=' + collected.blocked);
+            setStatus(collected.blocked ? blockedNotice(collected) : messages.nocontent);
+            return;
+        }
+
+        job.sink = createAudioSink(config.exporter.mp3worker || '');
+        report('exportstart', 'source=' + (course ? 'activity' : 'screen') + ' engine=' + engineKind
+            + ' language=' + language.code + ' fragments=' + job.total
+            + ' characters=' + texts.reduce((sum, text) => sum + text.length, 0));
+
+        job.context = exportAudioContext();
+        await job.sink.open(job.context.sampleRate);
+        for (let i = 0; i < job.total; i++) {
+            job.current = i + 1;
+            if (stopped) {
+                return;
+            }
+            setStatus((messages.downloadprogress || '').replace('{current}', i + 1).replace('{total}', job.total));
+            // Process one fragment at a time and release its URL promptly.
+            const samples = await exportFragment(engine, job.context, texts[i]);
+            if (samples === null) {
+                return;
+            }
+            if (i > 0) {
+                job.sink.write(new Int16Array(Math.round(job.context.sampleRate * FRAGMENT_GAP_SECONDS)));
+            }
+            job.sink.write(toPcm16(samples));
+        }
+        if (stopped) {
+            return;
+        }
+        const file = await job.sink.finish();
+        downloadUrl = URL.createObjectURL(file);
+        saveLink.href = downloadUrl;
+        saveLink.download = fileTitle() + '-' + language.code + '.' + job.sink.format;
+        saveLink.hidden = false;
+        setStatus([messages.downloadready, collected.blocked ? blockedNotice(collected) : '']
+            .filter(Boolean).join(' '));
+        report('exportdone', 'fragments=' + job.total + ' format=' + job.sink.format
+            + ' seconds=' + elapsed(job) + ' bytes=' + file.size, {lang: language.code});
+        saveLink.click();
+    };
+
+    const startDownload = async() => {
         if (downloading || state !== STATE_IDLE) {
             return;
         }
-        downloading = true;
         stopped = false;
-        downloadButtons.forEach((button) => { button.disabled = true; });
-        controls.querySelectorAll('select').forEach((select) => { select.disabled = true; });
-        stopButton.style.display = '';
+        setExporting(true);
         saveLink.hidden = true;
         if (downloadUrl) {
             URL.revokeObjectURL(downloadUrl);
             downloadUrl = null;
         }
-        let context = null;
-        let sink = null;
-        let current = 0;
-        let total = 0;
-        const started = Date.now();
-        const seconds = () => Math.round((Date.now() - started) / 1000);
-        const progress = (count) => setStatus((messages.downloadprogress || '')
-            .replace('{current}', count).replace('{total}', total));
+        const job = {context: null, sink: null, current: 0, total: 0, started: Date.now()};
+        const where = () => 'fragment ' + job.current + '/' + job.total + ' after ' + elapsed(job) + 's';
         try {
-            const engine = await resolveEngine(language, true);
-            if (stopped) {
-                return;
-            }
-            if (!engine) {
-                report('exportnoengine', 'language=' + language.code);
-                setStatus(messages.downloadunavailable || '');
-                return;
-            }
-            // Exports bypass the playback cap. A SCORM package or a book is read
-            // whole, from the server; anything else as the screen shows it.
-            const course = courseText ? await collectCourseText() : null;
-            const collected = course || await collectChunks(false);
-            if (stopped) {
-                return;
-            }
-            const texts = collected.chunks.map((chunk) => chunk.text);
-            total = texts.length;
-            if (!total) {
-                report('exportempty', 'blocked=' + collected.blocked);
-                setStatus(collected.blocked ? blockedNotice(collected) : messages.nocontent);
-                return;
-            }
-
-            sink = createAudioSink((config.exporter && config.exporter.mp3worker) || '');
-            report('exportstart', 'source=' + (course ? 'activity' : 'screen') + ' engine=' + engineKind
-                + ' language=' + language.code + ' fragments=' + total
-                + ' characters=' + texts.reduce((sum, text) => sum + text.length, 0));
-
-            const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-            if (!AudioContextClass) {
-                throw new Error('Audio decoding unavailable');
-            }
-            // Piper speaks at 22050 Hz: decoding at that rate, rather than the
-            // sound card's, keeps a long course within the browser's memory.
-            try {
-                context = new AudioContextClass({sampleRate: EXPORT_SAMPLE_RATE});
-            } catch (e) {
-                context = new AudioContextClass();
-            }
-            await sink.open(context.sampleRate);
-            for (let i = 0; i < total; i++) {
-                current = i + 1;
-                if (stopped) {
-                    return;
-                }
-                progress(i + 1);
-                let token = null;
-                try {
-                    // Process one fragment at a time and release its URL promptly.
-                    /* eslint-disable-next-line no-await-in-loop */
-                    // An engine that streams its playback has a separate call for a whole file.
-                    token = await (engine.prepareFile ? engine.prepareFile(texts[i]) : engine.prepare(texts[i]));
-                    if (stopped) {
-                        return;
-                    }
-                    /* eslint-disable-next-line no-await-in-loop */
-                    const response = await fetch(token);
-                    if (!response.ok) {
-                        throw new Error('Audio fetch failed');
-                    }
-                    /* eslint-disable-next-line no-await-in-loop */
-                    const bytes = await response.arrayBuffer();
-                    /* eslint-disable-next-line no-await-in-loop */
-                    const buffer = await context.decodeAudioData(bytes);
-                    const samples = new Float32Array(buffer.length);
-                    // decodeAudioData resamples all fragments to context.sampleRate.
-                    for (let channel = 0; channel < buffer.numberOfChannels; channel++) {
-                        const data = buffer.getChannelData(channel);
-                        for (let j = 0; j < samples.length; j++) {
-                            samples[j] += data[j] / buffer.numberOfChannels;
-                        }
-                    }
-                    if (i > 0) {
-                        sink.write(new Int16Array(Math.round(context.sampleRate * FRAGMENT_GAP_SECONDS)));
-                    }
-                    sink.write(toPcm16(samples));
-                } finally {
-                    if (token !== null) {
-                        engine.release(token);
-                    }
-                }
-            }
-            if (stopped) {
-                return;
-            }
-            const file = await sink.finish();
-            downloadUrl = URL.createObjectURL(file);
-            const title = (document.title || 'audio').replace(/[^\p{L}\p{N}_-]+/gu, '-').slice(0, 80) || 'audio';
-            saveLink.href = downloadUrl;
-            saveLink.download = title + '-' + language.code + '.' + sink.format;
-            saveLink.hidden = false;
-            setStatus([messages.downloadready, collected.blocked ? blockedNotice(collected) : '']
-                .filter(Boolean).join(' '));
-            report('exportdone', 'fragments=' + total + ' format=' + sink.format
-                + ' seconds=' + seconds() + ' bytes=' + file.size);
-            saveLink.click();
+            await runExport(job);
         } catch (error) {
-            if (sink) {
-                sink.abort();
+            if (job.sink) {
+                job.sink.abort();
             }
-            const reason = ((error && error.name) || 'Error') + ': ' + ((error && error.message) || error);
+            const reason = describeError(error);
             if (!stopped) {
-                report('exporterror', 'fragment ' + current + '/' + total + ' after ' + seconds() + 's ' + reason);
+                report('exporterror', where() + ' ' + reason);
                 setStatus((messages.downloaderror || '') + ' (' + reason + ')');
             }
         } finally {
-            if (context) {
-                await context.close().catch(() => {});
+            if (job.context) {
+                await job.context.close().catch(ignoreFailure);
             }
             if (stopped) {
-                if (sink) {
-                    sink.abort();
+                if (job.sink) {
+                    job.sink.abort();
                 }
-                report('exportcancel', 'fragment ' + current + '/' + total + ' after ' + seconds() + 's');
-                setStatus(messages.downloadcancelled || '');
+                report('exportcancel', where());
+                setStatus(messages.downloadcancelled);
             }
-            downloading = false;
-            downloadButtons.forEach((button) => { button.disabled = false; });
-            controls.querySelectorAll('select').forEach((select) => { select.disabled = false; });
-            stopButton.style.display = 'none';
+            setExporting(false);
         }
     };
 
@@ -1935,9 +2089,11 @@ export const init = (config) => {
      *
      * @param {Object} pdf {url, filename}
      */
-    const saveGeneratedPdf = async (pdf) => {
+    const saveGeneratedPdf = async(pdf) => {
         downloading = true;
-        downloadButtons.forEach((button) => { button.disabled = true; });
+        downloadButtons.forEach((button) => {
+            button.disabled = true;
+        });
         setStatus(messages.pdfgenerating || '');
         try {
             const response = await fetch(pdf.url, {credentials: 'same-origin'});
@@ -1953,11 +2109,14 @@ export const init = (config) => {
             // Give the browser time to start the download before releasing it.
             setTimeout(() => URL.revokeObjectURL(href), 60000);
             setStatus(messages.pdfdownloadstarted || '');
+            report('pdfdownload', '', {source: 'generated'});
         } catch (e) {
             setStatus(messages.pdferror || '');
         } finally {
             downloading = false;
-            downloadButtons.forEach((button) => { button.disabled = false; });
+            downloadButtons.forEach((button) => {
+                button.disabled = false;
+            });
         }
     };
 
@@ -1976,6 +2135,7 @@ export const init = (config) => {
         if (embeddedUrl) {
             saveAs(embeddedUrl, decodeURIComponent(new URL(embeddedUrl).pathname.split('/').pop() || ''));
             setStatus(messages.pdfdownloadstarted || '');
+            report('pdfdownload', '', {source: 'screen'});
             return;
         }
         // Otherwise the PDF of the SCORM package: built from it, or shipped with it.
@@ -1989,6 +2149,7 @@ export const init = (config) => {
         }
         saveAs(packagePdf.url, packagePdf.filename);
         setStatus(messages.pdfdownloadstarted || '');
+        report('pdfdownload', '', {source: 'package'});
     });
 
     link.addEventListener('click', (e) => {
@@ -2002,7 +2163,9 @@ export const init = (config) => {
         }
         if (state === STATE_IDLE) {
             state = STATE_PLAYING;
-            downloadButtons.forEach((button) => { button.disabled = true; });
+            downloadButtons.forEach((button) => {
+                button.disabled = true;
+            });
             playChunks();
         } else if (state === STATE_PLAYING) {
             paused = true;

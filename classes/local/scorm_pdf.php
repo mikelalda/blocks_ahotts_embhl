@@ -16,8 +16,6 @@
 
 namespace block_ahotts_embhl\local;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Turn the files of a published SCORM package into a printable PDF.
  *
@@ -43,7 +41,6 @@ defined('MOODLE_INTERNAL') || die();
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class scorm_pdf {
-
     /** @var int Widest image, in CSS pixels, that still fits an A4 page. */
     const IMAGE_MAX_WIDTH = 640;
 
@@ -120,6 +117,8 @@ class scorm_pdf {
     private $accent = self::DEFAULT_ACCENT;
 
     /**
+     * Prepare the reader of one package.
+     *
      * @param callable $read fn(string $path): ?string, paths relative to the package root.
      * @param string[]|null $paths Every file of the package; null for a hosted Rise course, which cannot be listed.
      * @param string $tempdir Writable directory for the images; '' to leave images out.
@@ -174,7 +173,7 @@ class scorm_pdf {
         foreach ($area as $file) {
             $files[ltrim($file->get_filepath(), '/') . $file->get_filename()] = $file;
         }
-        return new self(function(string $path) use ($files): ?string {
+        return new self(function (string $path) use ($files): ?string {
             return isset($files[$path]) ? $files[$path]->get_content() : null;
         }, array_keys($files), $tempdir);
     }
@@ -189,15 +188,17 @@ class scorm_pdf {
     public static function from_directory(string $directory, string $tempdir): self {
         $directory = rtrim($directory, '/') . '/';
         $paths = [];
-        $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($directory,
-            \FilesystemIterator::SKIP_DOTS));
+        $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator(
+            $directory,
+            \FilesystemIterator::SKIP_DOTS
+        ));
         foreach ($iterator as $file) {
             if ($file->isFile()) {
                 $paths[] = substr($file->getPathname(), strlen($directory));
             }
         }
         sort($paths);
-        return new self(function(string $path) use ($directory): ?string {
+        return new self(function (string $path) use ($directory): ?string {
             $content = @file_get_contents($directory . $path);
             return $content === false ? null : $content;
         }, $paths, $tempdir);
@@ -251,7 +252,7 @@ class scorm_pdf {
                 $document['sections'][$index]['title'] = '';
             }
         }
-        $document['sections'] = array_values(array_filter($document['sections'], function(array $section): bool {
+        $document['sections'] = array_values(array_filter($document['sections'], function (array $section): bool {
             return trim($section['title']) !== '' || self::has_content($section['html']);
         }));
         return $document;
@@ -290,7 +291,7 @@ class scorm_pdf {
                 $out[] = trim(preg_replace('/\s+/u', ' ', $line));
             }
         }
-        return array_values(array_filter($out, function(string $line): bool {
+        return array_values(array_filter($out, function (string $line): bool {
             return $line !== '';
         }));
     }
@@ -342,8 +343,11 @@ class scorm_pdf {
                 continue;
             }
             $contents .= isset($section['kicker'])
-                ? '<tr><td width="12%" style="color:' . $accent . ';font-weight:bold;">' . self::esc(preg_replace('/^\D+/u', '',
-                    $section['kicker'])) . '</td><td width="88%">' . self::esc($section['title']) . '</td></tr>'
+                ? '<tr><td width="12%" style="color:' . $accent . ';font-weight:bold;">' . self::esc(preg_replace(
+                    '/^\D+/u',
+                    '',
+                    $section['kicker']
+                )) . '</td><td width="88%">' . self::esc($section['title']) . '</td></tr>'
                 : '<tr><td colspan="2" style="font-weight:bold;color:' . self::MUTED_COLOUR . ';">'
                     . self::esc(mb_strtoupper($section['title'], 'UTF-8')) . '</td></tr>';
         }
@@ -390,7 +394,7 @@ class scorm_pdf {
      */
     private static function style_headings(string $html, string $family): string {
         $sizes = ['h3' => '14pt', 'h4' => '12pt', 'h5' => '11pt'];
-        return preg_replace_callback('#<(h[345])>#', function(array $m) use ($sizes, $family): string {
+        return preg_replace_callback('#<(h[345])>#', function (array $m) use ($sizes, $family): string {
             return '<' . $m[1] . ' style="font-family:' . $family . ';font-size:' . $sizes[$m[1]] . ';">';
         }, $html);
     }
@@ -484,8 +488,10 @@ class scorm_pdf {
             return $this->has('scormcontent/index.html') ? 'scormcontent/' : null;
         }
         foreach ($this->listed() as $path) {
-            if (preg_match('#^((?:.*/)?scormcontent/)(?:locales/[^/]+\.js|RISE360\.js|lib/rise/[^/]+\.js)$#', $path, $match)
-                    && $this->has($match[1] . 'index.html')) {
+            if (
+                preg_match('#^((?:.*/)?scormcontent/)(?:locales/[^/]+\.js|RISE360\.js|lib/rise/[^/]+\.js)$#', $path, $match)
+                    && $this->has($match[1] . 'index.html')
+            ) {
                 return $match[1];
             }
         }
@@ -510,8 +516,10 @@ class scorm_pdf {
             $sources[] = $base . 'locales/' . $match[1] . '.js';
         }
         // The languages the player offers, for a course whose files cannot be listed.
-        if (preg_match('/"available"\s*:\s*\[([^\]]*)\]/', $index, $match)
-                && preg_match_all('/"([A-Za-z0-9_-]{1,20})"/', $match[1], $languages)) {
+        if (
+            preg_match('/"available"\s*:\s*\[([^\]]*)\]/', $index, $match)
+                && preg_match_all('/"([A-Za-z0-9_-]{1,20})"/', $match[1], $languages)
+        ) {
             foreach ($languages[1] as $language) {
                 $sources[] = $base . 'locales/' . $language . '.js';
             }
@@ -524,8 +532,12 @@ class scorm_pdf {
             }
         }
         foreach ($this->listed() as $path) {
-            if (strpos($path, $base) === 0 && preg_match('#^(locales/[^/]+\.js|[^/]+\.(js|json|html))$#',
-                    substr($path, strlen($base)))) {
+            if (
+                strpos($path, $base) === 0 && preg_match(
+                    '#^(locales/[^/]+\.js|[^/]+\.(js|json|html))$#',
+                    substr($path, strlen($base))
+                )
+            ) {
                 $sources[] = $path;
             }
         }
@@ -554,7 +566,7 @@ class scorm_pdf {
         }
         // The longest string is the course; try the others too, but after it.
         $blobs = $matches[2];
-        usort($blobs, function(string $a, string $b): int {
+        usort($blobs, function (string $a, string $b): int {
             return strlen($b) <=> strlen($a);
         });
         foreach ($blobs as $blob) {
@@ -586,7 +598,7 @@ class scorm_pdf {
         $theme = $this->rise_theme($data, $base);
         $this->accent = $theme['accent'];
         $labels = $data['labelSet']['labels'] ?? [];
-        $total = count(array_filter($course['lessons'], function($lesson): bool {
+        $total = count(array_filter($course['lessons'], function ($lesson): bool {
             return is_array($lesson) && empty($lesson['deleted']) && ($lesson['type'] ?? '') !== 'section';
         }));
         $number = 0;
@@ -616,7 +628,7 @@ class scorm_pdf {
             foreach ($lesson['items'] ?? [] as $block) {
                 $html .= $this->rise_block($block, $base, $stories);
             }
-            // "Lesson 3 of 8", in the words of the course.
+            // A "Lesson 3 of 8" label, in the words of the course.
             $number++;
             $kicker = trim(($labels['lessonName'] ?? 'Lesson') . ' ' . $number . ' '
                 . ($labels['lessonPreposition'] ?? 'of') . ' ' . $total);
@@ -723,7 +735,7 @@ class scorm_pdf {
      */
     public static function tint(string $hex, float $amount): string {
         $rgb = sscanf($hex, '#%02x%02x%02x');
-        return vsprintf('#%02x%02x%02x', array_map(function(int $channel) use ($amount): int {
+        return vsprintf('#%02x%02x%02x', array_map(function (int $channel) use ($amount): int {
             return (int) round($channel + (255 - $channel) * $amount);
         }, $rgb));
     }
@@ -821,7 +833,7 @@ class scorm_pdf {
             }
             if ($type === 'list') {
                 $tag = ($node['variant'] ?? '') === 'numbered' ? 'ol' : 'ul';
-                $items = array_filter(array_map(function(string $child): string {
+                $items = array_filter(array_map(function (string $child): string {
                     return self::has_content($child) ? '<li>' . self::unwrap_paragraphs($child) . '</li>' : '';
                 }, $children));
                 $html .= $items ? "<{$tag}>" . implode('', $items) . "</{$tag}>" : '';
@@ -891,7 +903,7 @@ class scorm_pdf {
         // Slides in story order: the ids as data.js mentions them, then any other slide file.
         $order = [];
         if ($data !== null) {
-            array_walk_recursive($data, function($value, $key) use (&$order, $dir) {
+            array_walk_recursive($data, function ($value, $key) use (&$order, $dir) {
                 if (is_string($value) && preg_match('/^[A-Za-z0-9_]{3,}$/', $value) && $this->has($dir . $value . '.js')) {
                     $order[$value] = true;
                 }
@@ -980,7 +992,7 @@ class scorm_pdf {
             return null;
         }
         // Undo the JavaScript string escapes, leaving valid JSON escapes behind.
-        $json = preg_replace_callback('/\\\\(u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|[\s\S])/', function(array $m): string {
+        $json = preg_replace_callback('/\\\\(u[0-9a-fA-F]{4}|x[0-9a-fA-F]{2}|[\s\S])/', function (array $m): string {
             $c = $m[1];
             if ($c[0] === 'u' && strlen($c) === 5) {
                 return '\\' . $c;
@@ -1191,9 +1203,11 @@ class scorm_pdf {
                     if (in_array($tag, self::KEEP, true)) {
                         $out .= in_array($tag, ['tr', 'thead', 'tbody', 'tfoot', 'li'], true)
                             ? "<{$tag}>{$inner}</{$tag}>" : self::wrap($tag, $inner);
-                    } else if (in_array($tag, ['div', 'section', 'article', 'main', 'figure', 'figcaption', 'aside',
+                    } else if (
+                        in_array($tag, ['div', 'section', 'article', 'main', 'figure', 'figcaption', 'aside',
                             'dl', 'dd', 'dt', 'details', 'summary', 'center'], true)
-                            && self::has_content($inner) && !self::has_block($inner)) {
+                            && self::has_content($inner) && !self::has_block($inner)
+                    ) {
                         // A block of inline content becomes a paragraph of its own.
                         $out .= '<p>' . trim($inner) . '</p>';
                     } else {
@@ -1235,8 +1249,8 @@ class scorm_pdf {
         $scale = min(1, self::IMAGE_MAX_WIDTH / $size[0], self::IMAGE_MAX_HEIGHT / $size[1]);
         $width = max(1, (int) round($size[0] * $scale));
         $height = max(1, (int) round($size[1] * $scale));
-        return '<p style="text-align:center;"><img src="' . self::esc('file://' . $file) . '" width="' . $width . '" height="' . $height
-            . '" /></p>';
+        return '<p style="text-align:center;"><img src="' . self::esc('file://' . $file) . '" width="' . $width
+            . '" height="' . $height . '" /></p>';
     }
 
     // Helpers.

@@ -22,8 +22,6 @@
  * @author     Nikolina Milioni
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-// Listen button text.
-$string['listentext'] = "Klausyti";
 
-// Listen button descriptive title text.
 $string['listen_titletext'] = "Klausyti šio puslapio naudojant BirtSpeaker";
+$string['listentext'] = "Klausyti";

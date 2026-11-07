@@ -23,8 +23,5 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-// Listen button text
-$string['listentext'] = "Ακούστε";
-
-// Listen button descriptive title text
 $string['listen_titletext'] = "Ακούστε αυτήν την σελίδα χρησιμοποιώντας BirtSpeaker";
+$string['listentext'] = "Ακούστε";

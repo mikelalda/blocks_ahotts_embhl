@@ -42,7 +42,7 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-import {encodeWav} from './piper';
+import {encodeWav, ignoreFailure} from './piper';
 import {createStretcher} from './stretch';
 
 export const SAMPLE_RATE = 24000;
@@ -90,7 +90,7 @@ export const unlockAudio = () => {
     try {
         const context = audioContext();
         if (context && context.state === 'suspended') {
-            context.resume().catch(() => {});
+            context.resume().catch(ignoreFailure);
         }
     } catch (e) {
         // No Web Audio: the engine reports itself unusable at warmup.
@@ -586,7 +586,8 @@ export const createPocketTtsEngine = (config, deps) => {
             return token.finished.then(() => {
                 tokens.delete(token.id);
                 if (!token.length) {
-                    throw new Error(token.error || 'Nothing to synthesise');
+                    const reason = token.error || 'Nothing to synthesise';
+                    throw new Error(reason);
                 }
                 return URL.createObjectURL(encodeWav(concat(token.chunks, token.length), SAMPLE_RATE));
             });
@@ -599,7 +600,7 @@ export const createPocketTtsEngine = (config, deps) => {
                 return;
             }
             if (context.state === 'suspended') {
-                context.resume().catch(() => {});
+                context.resume().catch(ignoreFailure);
             }
             const state = {
                 token,
@@ -626,14 +627,14 @@ export const createPocketTtsEngine = (config, deps) => {
         pause: () => {
             const context = playing && playing.context;
             if (context && context.state === 'running') {
-                context.suspend().catch(() => {});
+                context.suspend().catch(ignoreFailure);
             }
         },
 
         resume: () => {
             const context = playing && playing.context;
             if (context && context.state === 'suspended') {
-                context.resume().catch(() => {});
+                context.resume().catch(ignoreFailure);
             }
         },
 
@@ -654,7 +655,7 @@ export const createPocketTtsEngine = (config, deps) => {
             endPlayback(state);
             // A pause left the context suspended; the next reading needs it running.
             if (state.context.state === 'suspended') {
-                state.context.resume().catch(() => {});
+                state.context.resume().catch(ignoreFailure);
             }
         },
 

@@ -5,6 +5,14 @@
 // it under the terms of the GNU General Public License as published by
 // the Free Software Foundation, either version 3 of the License, or
 // (at your option) any later version.
+//
+// Moodle is distributed in the hope that it will be useful,
+// but WITHOUT ANY WARRANTY; without even the implied warranty of
+// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+// GNU General Public License for more details.
+//
+// You should have received a copy of the GNU General Public License
+// along with Moodle.  If not, see <https://www.gnu.org/licenses/>.
 
 /**
  * Provision one inherited aHoTTS block per course. Dry run by default.
@@ -15,7 +23,8 @@
  */
 
 define('CLI_SCRIPT', true);
-require_once(__DIR__ . '/../../../lib/clilib.php');
+require(__DIR__ . '/../../../config.php');
+require_once($CFG->libdir . '/clilib.php');
 
 [$options, $unknown] = cli_get_params([
     'help' => false,
@@ -65,8 +74,10 @@ Salida JSONL: sitio, referencias, plan por curso y resumen.
 HELP;
     exit(0);
 }
-if ($unknown || (bool)$options['all'] === (bool)$options['courseid'] ||
-        ($options['apply'] && $options['dry-run'])) {
+if (
+    $unknown || (bool)$options['all'] === (bool)$options['courseid'] ||
+        ($options['apply'] && $options['dry-run'])
+) {
     cli_error('Indica --courseid=N o --all; --apply y --dry-run son incompatibles. Consulta --help.');
 }
 if ($options['courseid'] !== false && !preg_match('/^[1-9][0-9]*$/D', $options['courseid'])) {
@@ -74,8 +85,10 @@ if ($options['courseid'] !== false && !preg_match('/^[1-9][0-9]*$/D', $options['
 }
 $languagecodes = ['es' => 'es_es', 'es_es' => 'es_es', 'eu' => 'eu_es', 'eu_es' => 'eu_es',
     'en' => 'en_us', 'en_us' => 'en_us', 'en_gb' => 'en_uk', 'en_uk' => 'en_uk'];
-if ($options['language'] !== false && ($options['all'] || !is_string($options['language']) ||
-        !isset($languagecodes[strtolower(str_replace('-', '_', $options['language']))]))) {
+if (
+    $options['language'] !== false && ($options['all'] || !is_string($options['language']) ||
+        !isset($languagecodes[strtolower(str_replace('-', '_', $options['language']))]))
+) {
     cli_error('--language requiere --courseid y un idioma admitido: eu, es, en, en_uk.');
 }
 $languagemap = [];
@@ -94,10 +107,6 @@ if ($options['language-map']) {
 if ($options['language'] !== false) {
     $languagemap[(int)$options['courseid']] = $options['language'];
 }
-if (!is_readable(__DIR__ . '/../../../config.php')) {
-    cli_error('No se puede leer config.php. Ejecuta este script con el usuario del servicio Moodle. No se han modificado bloques.');
-}
-require(__DIR__ . '/../../../config.php');
 // CLI deployments may still have a class map cached before this helper existed.
 $languagehelper = __DIR__ . '/../classes/local/course_language.php';
 if (!is_readable($languagehelper)) {
@@ -107,7 +116,11 @@ require_once($languagehelper);
 require_once($CFG->libdir . '/blocklib.php');
 require_once($CFG->dirroot . '/course/lib.php');
 
-/** Emit one machine-readable report record. */
+/**
+ * Emit one machine-readable report record.
+ *
+ * @param array $data
+ */
 function block_ahotts_embhl_report(array $data): void {
     echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR) . PHP_EOL;
 }
@@ -226,8 +239,10 @@ try {
             foreach ($instances as $instance) {
                 if ((int)$instance->parentcontextid === (int)$context->id) {
                     $own[] = $instance;
-                } else if (!in_array((int)$instance->parentcontextid, $ancestorids, true) ||
-                        $instance->showinsubcontexts) {
+                } else if (
+                    !in_array((int)$instance->parentcontextid, $ancestorids, true) ||
+                        $instance->showinsubcontexts
+                ) {
                     $conflicts[] = (int)$instance->id;
                 }
             }

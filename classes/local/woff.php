@@ -16,8 +16,6 @@
 
 namespace block_ahotts_embhl\local;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Unwrap a WOFF 1.0 web font into the TrueType/OpenType font it holds.
  *
@@ -30,7 +28,6 @@ defined('MOODLE_INTERNAL') || die();
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class woff {
-
     /**
      * The sfnt font inside a WOFF file.
      *

@@ -22,8 +22,6 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Upgrade the block.
  *
@@ -31,6 +29,8 @@ defined('MOODLE_INTERNAL') || die();
  * @return bool
  */
 function xmldb_block_ahotts_embhl_upgrade($oldversion) {
+    global $DB;
+    $dbman = $DB->get_manager();
 
     if ($oldversion < 2026091802) {
         // The phonemizer this block first shipped with is an eSpeak NG build
@@ -78,6 +78,33 @@ function xmldb_block_ahotts_embhl_upgrade($oldversion) {
         unset_config('hostedproxy', 'block_ahotts_embhl');
 
         upgrade_block_savepoint(true, 2026101602, 'ahotts_embhl');
+    }
+
+    if ($oldversion < 2026110700) {
+        // The ReadSpeaker docReader proxy was removed; forget its setting.
+        unset_config('docreader', 'block_ahotts_embhl');
+
+        upgrade_block_savepoint(true, 2026110700, 'ahotts_embhl');
+    }
+
+    if ($oldversion < 2026110701) {
+        // Monthly totals of readings and downloads, for the usage report.
+        $table = new xmldb_table('block_ahotts_embhl_usage');
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('period', XMLDB_TYPE_INTEGER, '6', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('courseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('action', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('total', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('timemodified', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, '0');
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_key('courseid', XMLDB_KEY_FOREIGN, ['courseid'], 'course', ['id']);
+        $table->add_index('periodcourseaction', XMLDB_INDEX_UNIQUE, ['period', 'courseid', 'action']);
+
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        upgrade_block_savepoint(true, 2026110701, 'ahotts_embhl');
     }
 
     return true;

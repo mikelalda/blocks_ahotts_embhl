@@ -23,8 +23,5 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-// Listen button text
-$string['listentext'] = "Poslušajte";
-
-// Listen button descriptive title text
 $string['listen_titletext'] = "Poslušajte stranicu koja koristi BirtSpeaker webReader";
+$string['listentext'] = "Poslušajte";

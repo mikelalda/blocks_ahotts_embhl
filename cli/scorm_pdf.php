@@ -47,8 +47,12 @@ $document = $converter->document($cm->name);
 cli_writeln('Title: ' . $document['title']);
 foreach ($document['sections'] as $section) {
     $text = trim(html_entity_decode(strip_tags($section['html']), ENT_QUOTES | ENT_HTML5, 'UTF-8'));
-    cli_writeln(sprintf('  %s %s (%d characters)', str_repeat('-', $section['level']), $section['title'] ?: '[untitled]',
-        core_text::strlen($text)));
+    cli_writeln(sprintf(
+        '  %s %s (%d characters)',
+        str_repeat('-', $section['level']),
+        $section['title'] ?: '[untitled]',
+        core_text::strlen($text)
+    ));
 }
 cli_writeln('Source: ' . $converter->source());
 if (scorm_pdf::is_empty($document)) {

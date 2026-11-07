@@ -1,0 +1,21 @@
+<?xml version="1.0"?>
+<libraries>
+    <library>
+        <location>js/pdfjs</location>
+        <name>PDF.js</name>
+        <description>Reads the text of PDF files published inside SCORM packages.</description>
+        <version>6.4.299</version>
+        <license>Apache</license>
+        <licenseversion>2.0</licenseversion>
+        <repository>https://github.com/mozilla/pdf.js</repository>
+    </library>
+    <library>
+        <location>js/lame</location>
+        <name>lamejs</name>
+        <description>MP3 encoder used to export the synthesised audio.</description>
+        <version>1.2.1</version>
+        <license>LGPL</license>
+        <licenseversion>3.0</licenseversion>
+        <repository>https://github.com/zhuker/lamejs</repository>
+    </library>
+</libraries>

@@ -14,6 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+namespace block_ahotts_embhl;
+
+use block_ahotts_embhl\local\origins;
+
+#[\PHPUnit\Framework\Attributes\CoversClass(\block_ahotts_embhl\local\origins::class)]
 /**
  * Tests for the SCORM bridge origin allow list.
  *
@@ -22,13 +27,7 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  * @covers     \block_ahotts_embhl\local\origins
  */
-
-namespace block_ahotts_embhl;
-
-use block_ahotts_embhl\local\origins;
-
-class origins_test extends \advanced_testcase {
-
+final class origins_test extends \advanced_testcase {
     public function test_parse_accepts_one_origin_per_line(): void {
         $parsed = origins::parse("https://scorm.example.org\nhttps://learning.example.org:8443\n");
 

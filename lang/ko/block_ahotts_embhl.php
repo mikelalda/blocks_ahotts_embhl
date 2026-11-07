@@ -23,8 +23,5 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-// Listen button text
-$string['listentext'] = "듣기";
-
-// Listen button descriptive title text
 $string['listen_titletext'] = "듣기";
+$string['listentext'] = "듣기";

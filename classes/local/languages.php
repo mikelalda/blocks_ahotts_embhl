@@ -24,8 +24,6 @@
 
 namespace block_ahotts_embhl\local;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Builds the language and engine configuration handed to amd/src/speech.js.
  *
@@ -36,7 +34,6 @@ defined('MOODLE_INTERNAL') || die();
  * reading it with a Spanish one is worse than not offering the button.
  */
 class languages {
-
     /** @var string[] Languages the Listen button knows how to offer. */
     const SUPPORTED = ['eu', 'es', 'en', 'fr', 'ca', 'gl', 'de', 'it', 'pt'];
 
@@ -469,8 +466,12 @@ class languages {
      * @param bool $pocketttsenabled
      * @return array[]
      */
-    public static function build(array $codes, string $configured, bool $piperenabled,
-            bool $pocketttsenabled = false): array {
+    public static function build(
+        array $codes,
+        string $configured,
+        bool $piperenabled,
+        bool $pocketttsenabled = false
+    ): array {
         $names = get_string_manager()->get_list_of_languages();
         $out = [];
 

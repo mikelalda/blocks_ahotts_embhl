@@ -14,6 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+namespace block_ahotts_embhl;
+
+use block_ahotts_embhl\local\scorm_pdf;
+
+#[\PHPUnit\Framework\Attributes\CoversClass(\block_ahotts_embhl\local\scorm_pdf::class)]
 /**
  * Tests for building a PDF from the files of a SCORM package.
  *
@@ -22,13 +27,7 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  * @covers     \block_ahotts_embhl\local\scorm_pdf
  */
-
-namespace block_ahotts_embhl;
-
-use block_ahotts_embhl\local\scorm_pdf;
-
-class scorm_pdf_test extends \advanced_testcase {
-
+final class scorm_pdf_test extends \advanced_testcase {
     /**
      * Converter for one of the fixture packages.
      *
@@ -46,7 +45,7 @@ class scorm_pdf_test extends \advanced_testcase {
      * @return string
      */
     private function html(array $document): string {
-        return implode("\n", array_map(function(array $section): string {
+        return implode("\n", array_map(function (array $section): string {
             return $section['title'] . "\n" . $section['html'];
         }, $document['sections']));
     }
@@ -59,16 +58,20 @@ class scorm_pdf_test extends \advanced_testcase {
 
         $this->assertSame('Curso Rise', $document['title']);
         $this->assertSame(['Primera parte', 'Lección uno', 'Autoevaluación'], array_column($document['sections'], 'title'));
-        foreach (['<strong>visible</strong>', 'Subtítulo real', 'Nota destacada', 'Pestaña A', 'Contenido oculto B',
+        foreach (
+            ['<strong>visible</strong>', 'Subtítulo real', 'Nota destacada', 'Pestaña A', 'Contenido oculto B',
                 '<ol><li>Uno</li><li>Dos</li></ol>', 'Pie de foto', '<img ', '¿Pregunta?', 'Respuesta buena',
-                'Respuesta mala', 'Completa la frase'] as $expected) {
+                'Respuesta mala', 'Completa la frase'] as $expected
+        ) {
             $this->assertStringContainsString($expected, $html);
         }
         // TCPDF prefixes a bare absolute path with DOCUMENT_ROOT in a web request and loses the image.
         $this->assertStringContainsString('<img src="file:///', $html);
         // Text Rise keeps but does not show, feedback and the answers of open questions.
-        foreach (['>Heading<', 'present moment', 'Principios para la accesibilidad', 'Feedback secreto', 'solución',
-                'correct'] as $hidden) {
+        foreach (
+            ['>Heading<', 'present moment', 'Principios para la accesibilidad', 'Feedback secreto', 'solución',
+                'correct'] as $hidden
+        ) {
             $this->assertStringNotContainsString($hidden, $html);
         }
     }

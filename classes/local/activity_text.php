@@ -16,7 +16,6 @@
 
 namespace block_ahotts_embhl\local;
 
-defined('MOODLE_INTERNAL') || die();
 /**
  * The whole text of an activity, for the audio download.
  *
@@ -30,7 +29,6 @@ defined('MOODLE_INTERNAL') || die();
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class activity_text {
-
     /** @var string[] Activities read as a whole. */
     const MODULES = ['scorm', 'book'];
 
@@ -90,8 +88,14 @@ class activity_text {
             if ($chapter->hidden && !$viewhidden) {
                 continue;
             }
-            $content = file_rewrite_pluginfile_urls($chapter->content, 'pluginfile.php', $context->id, 'mod_book',
-                'chapter', $chapter->id);
+            $content = file_rewrite_pluginfile_urls(
+                $chapter->content,
+                'pluginfile.php',
+                $context->id,
+                'mod_book',
+                'chapter',
+                $chapter->id
+            );
             $sections[] = [
                 'title' => format_string($chapter->title, true, ['context' => $context]),
                 'html' => format_text($content, $chapter->contentformat, ['noclean' => true, 'context' => $context]),

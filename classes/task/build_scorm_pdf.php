@@ -13,9 +13,8 @@
 //
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
-namespace block_ahotts_embhl\task;
 
-defined('MOODLE_INTERNAL') || die();
+namespace block_ahotts_embhl\task;
 
 /**
  * Build the PDF of a SCORM activity for its current package revision.
@@ -25,7 +24,9 @@ defined('MOODLE_INTERNAL') || die();
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class build_scorm_pdf extends \core\task\adhoc_task {
-
+    /**
+     * Build the PDF of the SCORM package named in the custom data.
+     */
     public function execute() {
         $data = $this->get_custom_data();
         $cm = get_coursemodule_from_id('scorm', (int) ($data->cmid ?? 0), 0, false, IGNORE_MISSING);

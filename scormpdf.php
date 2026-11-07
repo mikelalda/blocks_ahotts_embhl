@@ -58,6 +58,7 @@ try {
     }
 } catch (Throwable $e) {
     // Leave the cause in the web server log: the package cannot be inspected from the browser.
+    // phpcs:ignore moodle.PHP.ForbiddenFunctions.FoundWithAlternative -- The web server log is the intended destination.
     error_log('block_ahotts_embhl: no PDF for SCORM cmid ' . $cm->id . ' (' . scorm_pdf_file::describe($cm) . '): '
         . get_class($e) . ': ' . $e->getMessage()
         . (!empty($e->debuginfo) ? ' [' . $e->debuginfo . ']' : '') . ' at ' . $e->getFile() . ':' . $e->getLine());

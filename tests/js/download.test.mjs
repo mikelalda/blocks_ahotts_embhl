@@ -69,7 +69,7 @@ const setup = (options = {}) => {
     }
     ctx.init({
         readid: 'region-main', maxlen: 1, packagepdfs: options.packagepdfs, texturl: options.texturl,
-        logurl: options.logurl, sesskey: 'abc', cmid: 9,
+        logurl: options.logurl, sesskey: 'abc', cmid: 9, courseid: 3,
         pdfjs: {library: '/pdf.min.js', worker: '/pdf.worker.min.js'},
         languages: [{code: 'es', engines: options.browserOnly ? [{kind: 'webspeech'}] :
             [{kind: 'webspeech'}, {kind: 'api', url: 'https://tts.example.org'}]}],
@@ -342,4 +342,40 @@ test('reports how an audio export went to the server log', async () => {
     assert.match(beacons[1].detail, /format=wav/);
     assert.equal(beacons[0].sesskey, 'abc');
     assert.equal(beacons[0].cmid, '9');
+    assert.equal(beacons[1].courseid, '3');
+    assert.equal(beacons[1].lang, 'es', 'the usage report counts audio downloads by language');
+});
+
+/**
+ * Collect what the block sends to the server log.
+ *
+ * @param {Object} ctx
+ * @returns {Object[]}
+ */
+const captureBeacons = (ctx) => {
+    const beacons = [];
+    ctx.window.navigator.sendBeacon = (url, body) => {
+        beacons.push(Object.fromEntries(body));
+        return true;
+    };
+    return beacons;
+};
+
+test('counts PDF downloads in the usage report with where the PDF came from', () => {
+    const screen = setup({pdf: true, logurl: 'https://moodle.example.org/blocks/ahotts_embhl/clientlog.php'});
+    const fromscreen = captureBeacons(screen);
+    screen.pdfFileDownload.click();
+    assert.deepEqual(fromscreen.map((b) => [b.event, b.source]), [['pdfdownload', 'screen']]);
+
+    const packaged = setup({packagepdfs: PACKAGE_PDFS, logurl: 'https://moodle.example.org/blocks/ahotts_embhl/clientlog.php'});
+    const frompackage = captureBeacons(packaged);
+    packaged.pdfFileDownload.click();
+    assert.deepEqual(frompackage.map((b) => [b.event, b.source]), [['pdfdownload', 'package']]);
+});
+
+test('does not count a PDF that could not be found', () => {
+    const ctx = setup({logurl: 'https://moodle.example.org/blocks/ahotts_embhl/clientlog.php'});
+    const beacons = captureBeacons(ctx);
+    ctx.pdfFileDownload.click();
+    assert.deepEqual(beacons, []);
 });

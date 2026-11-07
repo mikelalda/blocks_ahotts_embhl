@@ -18,6 +18,7 @@ namespace block_ahotts_embhl;
 
 use block_ahotts_embhl\local\rise_proxy;
 
+#[\PHPUnit\Framework\Attributes\CoversClass(\block_ahotts_embhl\local\rise_proxy::class)]
 /**
  * Hosted Rise 360 packages pointed at the site's reverse proxy.
  *
@@ -27,15 +28,16 @@ use block_ahotts_embhl\local\rise_proxy;
  * @covers     \block_ahotts_embhl\local\rise_proxy
  */
 final class rise_proxy_test extends \advanced_testcase {
-
     /** @var string The indexAPI.html of a hosted Rise package, as Articulate publishes it. */
     const PACKAGE = '<!doctype html><html><head>
     <script type="application/json" id="__ENV__">
       {"REMOTE_PACKAGES_CDN_URL":"https://packages.articulateusercontent.com"}
     </script>
-    <script crossorigin src="https://packages.articulateusercontent.com/content/RaQm6PEpAoIDk6BS11waYao2WB7EqphB/dist/host.js"></script>
+    <script crossorigin src="https://packages.articulateusercontent.com/content/'
+        . 'RaQm6PEpAoIDk6BS11waYao2WB7EqphB/dist/host.js"></script>
     </head><body><div id="content">
-      <iframe id="scormdriver_content" src="https://packages.articulateusercontent.com/content/RaQm6PEpAoIDk6BS11waYao2WB7EqphB/boot.html#token=f1a6e2f6"></iframe>
+      <iframe id="scormdriver_content" src="https://packages.articulateusercontent.com/content/'
+        . 'RaQm6PEpAoIDk6BS11waYao2WB7EqphB/boot.html#token=f1a6e2f6"></iframe>
     </div></body></html>';
 
     /** @var string This site's origin in the tests. */
@@ -54,10 +56,15 @@ final class rise_proxy_test extends \advanced_testcase {
 
         $this->assertStringNotContainsString('articulateusercontent.com', $rewritten);
         $this->assertStringContainsString('"REMOTE_PACKAGES_CDN_URL":"https://moodle.example.local"', $rewritten);
-        $this->assertStringContainsString('src="https://moodle.example.local/content/RaQm6PEpAoIDk6BS11waYao2WB7EqphB/boot.html',
-            $rewritten);
-        $this->assertSame('RaQm6PEpAoIDk6BS11waYao2WB7EqphB', rise_proxy::course_id($rewritten, self::ORIGIN),
-            'a rewritten package is still recognised');
+        $this->assertStringContainsString(
+            'src="https://moodle.example.local/content/RaQm6PEpAoIDk6BS11waYao2WB7EqphB/boot.html',
+            $rewritten
+        );
+        $this->assertSame(
+            'RaQm6PEpAoIDk6BS11waYao2WB7EqphB',
+            rise_proxy::course_id($rewritten, self::ORIGIN),
+            'a rewritten package is still recognised'
+        );
         $this->assertSame(self::PACKAGE, rise_proxy::restore($rewritten, self::ORIGIN));
     }
 
@@ -104,7 +111,9 @@ final class rise_proxy_test extends \advanced_testcase {
         $this->assertStringContainsString('RequestHeader unset Cookie', $config);
         $this->assertStringContainsString('Header unset Set-Cookie', $config);
         $this->assertStringContainsString('SSLProxyVerify require', $config);
-        $this->assertStringContainsString('Substitute "s|https://packages.articulateusercontent.com|' . rise_proxy::site_origin() . '|nq"',
-            $config);
+        $this->assertStringContainsString(
+            'Substitute "s|https://packages.articulateusercontent.com|' . rise_proxy::site_origin() . '|nq"',
+            $config
+        );
     }
 }

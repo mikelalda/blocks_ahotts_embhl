@@ -25,8 +25,8 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version = 2026102900;  // YYYYMMDDRR.
-$plugin->requires = 2015111600; // YYYYMMDDHH
-$plugin->component = 'block_ahotts_embhl'; // Full name of the plugin (used for diagnostics)
+$plugin->version = 2026110701;  // YYYYMMDDRR.
+$plugin->requires = 2015111600; // YYYYMMDDHH.
+$plugin->component = 'block_ahotts_embhl'; // Full name of the plugin (used for diagnostics).
 $plugin->maturity  = MATURITY_STABLE;
-$plugin->release = "dev-r139-hosted-course-pdf";
+$plugin->release = "dev-r140-usage-report";

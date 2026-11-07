@@ -14,6 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+namespace block_ahotts_embhl;
+
+use block_ahotts_embhl\local\package_pdf;
+
+#[\PHPUnit\Framework\Attributes\CoversClass(\block_ahotts_embhl\local\package_pdf::class)]
 /**
  * Tests for finding the PDF published inside a SCORM package.
  *
@@ -22,13 +27,16 @@
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  * @covers     \block_ahotts_embhl\local\package_pdf
  */
-
-namespace block_ahotts_embhl;
-
-use block_ahotts_embhl\local\package_pdf;
-
-class package_pdf_test extends \advanced_testcase {
-
+final class package_pdf_test extends \advanced_testcase {
+    /**
+     * One row of the package file list, as the code under test receives it.
+     *
+     * @param string $filepath
+     * @param string $filename
+     * @param int $filesize
+     * @param string $mimetype
+     * @return array
+     */
     private function file(string $filepath, string $filename, int $filesize, string $mimetype = ''): array {
         return ['filepath' => $filepath, 'filename' => $filename, 'filesize' => $filesize, 'mimetype' => $mimetype];
     }
@@ -42,12 +50,16 @@ class package_pdf_test extends \advanced_testcase {
             $this->file('/', 'sinextension', 50, 'application/pdf'),
         ]);
 
-        $this->assertSame(['curso.pdf', 'resumen.PDF', 'sinextension', 'handout.pdf'],
-            array_column($ranked, 'filename'));
+        $this->assertSame(
+            ['curso.pdf', 'resumen.PDF', 'sinextension', 'handout.pdf'],
+            array_column($ranked, 'filename')
+        );
     }
 
     public function test_for_page_lists_the_package_pdf_with_the_current_revision(): void {
         $this->resetAfterTest();
+        // The SCORM generator needs a current user.
+        $this->setAdminUser();
         $course = $this->getDataGenerator()->create_course();
         $scorm = $this->getDataGenerator()->create_module('scorm', ['course' => $course->id]);
         $cm = get_coursemodule_from_instance('scorm', $scorm->id);

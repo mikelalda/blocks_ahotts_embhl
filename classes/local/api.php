@@ -16,10 +16,14 @@
 
 namespace block_ahotts_embhl\local;
 
-defined('MOODLE_INTERNAL') || die();
-
+/**
+ * Links to the aHoTTS speech API, one endpoint per language.
+ *
+ * @package    block_ahotts_embhl
+ * @copyright  2026 Ahotts
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
 class api {
-
     /**
      * Resolve the endpoint bucket for a language.
      *

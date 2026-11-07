@@ -112,13 +112,13 @@ export const wavHeader = (length, samplerate) => {
     view.setUint32(4, 36 + (length * 2), true);
     writeText(8, 'WAVE');
     writeText(12, 'fmt ');
-    view.setUint32(16, 16, true);       // Size of the fmt chunk.
-    view.setUint16(20, 1, true);        // PCM.
-    view.setUint16(22, 1, true);        // Mono.
+    view.setUint32(16, 16, true); // Size of the fmt chunk.
+    view.setUint16(20, 1, true); // PCM.
+    view.setUint16(22, 1, true); // Mono.
     view.setUint32(24, samplerate, true);
     view.setUint32(28, samplerate * 2, true); // Byte rate.
-    view.setUint16(32, 2, true);        // Block align.
-    view.setUint16(34, 16, true);       // Bits per sample.
+    view.setUint16(32, 2, true); // Block align.
+    view.setUint16(34, 16, true); // Bits per sample.
     writeText(36, 'data');
     view.setUint32(40, length * 2, true);
     return view.buffer;
@@ -249,7 +249,7 @@ const loadModule = (loaderurl, url, name) => new Promise((resolve, reject) => {
  * @param {String} url
  * @return {Promise<ArrayBuffer>}
  */
-const fetchCached = async (url) => {
+const fetchCached = async(url) => {
     let cache = null;
     try {
         if (window.caches) {
@@ -285,6 +285,15 @@ const fetchCached = async (url) => {
 export const hasWebGpu = () => typeof navigator !== 'undefined' && !!navigator.gpu;
 
 /**
+ * Rejection handler for browser calls whose failure changes nothing: playing or
+ * resuming audio the browser holds back until a user gesture, or closing an
+ * audio context twice. The next action of the user tries again.
+ */
+export const ignoreFailure = () => {
+    // Nothing to do.
+};
+
+/**
  * Adapt a full eSpeak NG WebAssembly build to phonemize(text, language).
  *
  * eSpeak NG is published as an Emscripten command line program: it runs once
@@ -309,7 +318,7 @@ export const hasWebGpu = () => typeof navigator !== 'undefined' && !!navigator.g
 export const espeakPhonemizer = (factory, fetchBinary, wasmurl) => {
     let binary = null;
 
-    return async (text, language) => {
+    return async(text, language) => {
         if (wasmurl && !binary) {
             binary = await fetchBinary(wasmurl);
         }
@@ -324,7 +333,9 @@ export const espeakPhonemizer = (factory, fetchBinary, wasmurl) => {
                 '-v', language,
                 String(text),
             ],
-            print: () => {},
+            print: () => {
+                // The phonemes are read from ESPEAK_OUTPUT, not from stdout.
+            },
             printErr: (line) => errors.push(String(line)),
         };
         if (binary) {
@@ -447,7 +458,7 @@ export const createPiperEngine = (config, deps) => {
      *
      * @return {Promise<Boolean>} Whether the engine is usable.
      */
-    const start = async () => {
+    const start = async() => {
         await io.loadScript(config.orturl);
         ort = io.getOrt();
         if (!ort) {
@@ -493,9 +504,9 @@ export const createPiperEngine = (config, deps) => {
      * @param {String} text
      * @return {Promise<Object>} {samples: Float32Array, samplerate: Number}
      */
-    const synthesiseSamples = async (text) => {
+    const synthesiseSamples = async(text) => {
         const phonemes = await phonemize(text, voiceLanguage());
-        // eSpeak writes one line per clause. They go to the model as a single
+        // The eSpeak phonemizer writes one line per clause. They go to the model as a single
         // utterance, so the voice keeps its own rhythm and intonation instead of
         // having silences inserted between clauses.
         const clauses = (Array.isArray(phonemes) ? phonemes : [phonemes])
@@ -513,7 +524,7 @@ export const createPiperEngine = (config, deps) => {
         const inference = voice.inference || {};
         const feeds = {
             input: new ort.Tensor('int64', BigInt64Array.from(ids, (id) => BigInt(id)), [1, ids.length]),
-            input_lengths: new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)])),
+            'input_lengths': new ort.Tensor('int64', BigInt64Array.from([BigInt(ids.length)])),
             scales: new ort.Tensor('float32', Float32Array.from([
                 typeof inference.noise_scale === 'number' ? inference.noise_scale : 0.667,
                 typeof inference.length_scale === 'number' ? inference.length_scale : 1,
@@ -595,7 +606,7 @@ export const createPiperEngine = (config, deps) => {
 
         resume: () => {
             if (audio) {
-                audio.play().catch(() => {});
+                audio.play().catch(ignoreFailure);
             }
         },
 

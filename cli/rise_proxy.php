@@ -43,7 +43,7 @@ use block_ahotts_embhl\local\rise_proxy;
     'help' => false,
 ], ['h' => 'help']);
 
-$actions = array_filter(['apache', 'status', 'enable', 'disable'], function($name) use ($options) {
+$actions = array_filter(['apache', 'status', 'enable', 'disable'], function ($name) use ($options) {
     return !empty($options[$name]);
 });
 if ($options['help'] || count($actions) !== 1) {
@@ -64,13 +64,8 @@ USAGE);
     exit($options['help'] ? 0 : 1);
 }
 
-/**
- * Where a package lives, for the report.
- *
- * @param stored_file $file
- * @return string
- */
-$describe = function(stored_file $file): string {
+// Where a package lives, for the report.
+$describe = function (stored_file $file): string {
     $context = context::instance_by_id($file->get_contextid(), IGNORE_MISSING);
     if (!$context || $context->contextlevel != CONTEXT_MODULE) {
         return 'context ' . $file->get_contextid();

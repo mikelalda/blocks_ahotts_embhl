@@ -16,8 +16,6 @@
 
 namespace block_ahotts_embhl\local;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Find the PDFs of the SCORM activity shown on the page.
  *
@@ -30,7 +28,6 @@ defined('MOODLE_INTERNAL') || die();
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class package_pdf {
-
     /** @var int Packages rarely hold more than a few PDFs; never list hundreds. */
     const MAX_FILES = 20;
 
@@ -54,11 +51,15 @@ class package_pdf {
         }
         $context = \context_module::instance($cm->id);
         // Only the PDFs: a Storyline package easily holds thousands of files.
-        $candidates = $DB->get_records_select('files',
+        $candidates = $DB->get_records_select(
+            'files',
             "contextid = :contextid AND component = 'mod_scorm' AND filearea = 'content' AND itemid = 0
                 AND filename <> '.' AND " . $DB->sql_like('filename', ':pdf', false),
-            ['contextid' => $context->id, 'pdf' => '%.pdf'], '', 'id, filepath, filename, filesize, mimetype');
-        $candidates = array_map(function($file): array {
+            ['contextid' => $context->id, 'pdf' => '%.pdf'],
+            '',
+            'id, filepath, filename, filesize, mimetype'
+        );
+        $candidates = array_map(function ($file): array {
             return [
                 'filepath' => $file->filepath,
                 'filename' => $file->filename,
@@ -76,8 +77,15 @@ class package_pdf {
             ];
         }
         foreach (array_slice(self::rank($candidates), 0, self::MAX_FILES) as $candidate) {
-            $url = \moodle_url::make_pluginfile_url($context->id, 'mod_scorm', 'content',
-                (int) $scorm->revision, $candidate['filepath'], $candidate['filename'], true);
+            $url = \moodle_url::make_pluginfile_url(
+                $context->id,
+                'mod_scorm',
+                'content',
+                (int) $scorm->revision,
+                $candidate['filepath'],
+                $candidate['filename'],
+                true
+            );
             $result[] = ['url' => $url->out(false), 'filename' => $candidate['filename'], 'generated' => false];
         }
         return $result;
@@ -92,10 +100,10 @@ class package_pdf {
      * @return array The PDFs, best first.
      */
     public static function rank(array $files): array {
-        $pdfs = array_values(array_filter($files, function(array $file): bool {
+        $pdfs = array_values(array_filter($files, function (array $file): bool {
             return preg_match('/\.pdf$/i', $file['filename']) || $file['mimetype'] === 'application/pdf';
         }));
-        usort($pdfs, function(array $a, array $b): int {
+        usort($pdfs, function (array $a, array $b): int {
             $depth = substr_count($a['filepath'], '/') <=> substr_count($b['filepath'], '/');
             if ($depth) {
                 return $depth;

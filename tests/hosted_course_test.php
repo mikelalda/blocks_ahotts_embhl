@@ -14,6 +14,13 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+namespace block_ahotts_embhl;
+
+use block_ahotts_embhl\local\hosted_course;
+use block_ahotts_embhl\local\scorm_pdf;
+
+#[\PHPUnit\Framework\Attributes\CoversClass(\block_ahotts_embhl\local\hosted_course::class)]
+#[\PHPUnit\Framework\Attributes\CoversClass(\block_ahotts_embhl\local\scorm_pdf::class)]
 /**
  * Tests for reading Rise 360 hosted ("connected") courses from Articulate.
  *
@@ -23,14 +30,7 @@
  * @covers     \block_ahotts_embhl\local\hosted_course
  * @covers     \block_ahotts_embhl\local\scorm_pdf
  */
-
-namespace block_ahotts_embhl;
-
-use block_ahotts_embhl\local\hosted_course;
-use block_ahotts_embhl\local\scorm_pdf;
-
-class hosted_course_test extends \advanced_testcase {
-
+final class hosted_course_test extends \advanced_testcase {
     /** @var string A course id as Articulate writes it. */
     const ID = 'RaQm6PEpAoIDk6BS11waYao2WB7EqphB';
 
@@ -68,7 +68,7 @@ class hosted_course_test extends \advanced_testcase {
         $locale = '__resolveJsonp("course:und","' . base64_encode(json_encode($course)) . '")';
         $png = file_get_contents(__DIR__ . '/fixtures/scorm/rise/scormcontent/assets/foto.png');
         $info = base64_encode(json_encode(['courseId' => self::ID, 'courseVersion' => '15316c53-7bda']));
-        return function(string $method, string $url, array $post) use (&$log, $locale, $png, $info): array {
+        return function (string $method, string $url, array $post) use (&$log, $locale, $png, $info): array {
             $log[] = $method . ' ' . $url;
             switch ($method . ' ' . $url) {
                 case 'GET ' . self::COURSE . 'boot.html?bootEnabled=true':
@@ -92,8 +92,10 @@ class hosted_course_test extends \advanced_testcase {
             $this->assertSame(self::ID, $course->course_id());
         }
         $this->assertSame('eyJhbGciOi.J9-x_y=', hosted_course::token($this->indexapi(), self::ID));
-        $this->assertNull(hosted_course::from_package('<html>indexAPI of a packaged course</html>',
-            'https://moodle.example.local'));
+        $this->assertNull(hosted_course::from_package(
+            '<html>indexAPI of a packaged course</html>',
+            'https://moodle.example.local'
+        ));
     }
 
     public function test_a_hosted_course_becomes_a_document_with_its_images(): void {
@@ -136,7 +138,7 @@ class hosted_course_test extends \advanced_testcase {
         $reader = $course->reader();
         $this->assertNull($reader('https://moodle.example.local/login/index.php'));
         $this->assertNull($reader('imsmanifest.xml'));
-        $this->assertSame([], array_filter($log, function($line) {
+        $this->assertSame([], array_filter($log, function ($line) {
             return strpos($line, 'moodle.example.local') !== false;
         }));
     }

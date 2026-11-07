@@ -24,8 +24,6 @@
 
 namespace block_ahotts_embhl\local;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * Parsing and matching of the configured SCORM bridge origins.
  *
@@ -33,7 +31,6 @@ defined('MOODLE_INTERNAL') || die();
  * leading "*." wildcard in the host is accepted and matches sub-domains only.
  */
 class origins {
-
     /** @var string Accepted shape of one entry. */
     const PATTERN = '~^https?://(\*\.)?[a-z0-9]([a-z0-9\-\.]*[a-z0-9])?(:[0-9]{1,5})?$~';
 

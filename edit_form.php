@@ -22,15 +22,27 @@
  * @author     Richard Risholm
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-class block_ahotts_embhl_edit_form extends block_edit_form {
 
+/**
+ * Settings form of one block instance.
+ *
+ * @package    block_ahotts_embhl
+ * @copyright  2016 ReadSpeaker <info@readspeaker.com>
+ * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ */
+class block_ahotts_embhl_edit_form extends block_edit_form {
+    /**
+     * Fields specific to this block.
+     *
+     * @param MoodleQuickForm $mform
+     */
     protected function specific_definition($mform) {
 
         // Section header title according to language file.
         $mform->addElement('header', 'configheader', get_string('block_settings_title', 'block_ahotts_embhl'));
 
         // Set a custom language.
-        $language_option = array(
+        $languageoption = [
             'af_za' => get_string('afrikaans', 'block_ahotts_embhl'),
             'ar_ar' => get_string('arabic', 'block_ahotts_embhl'),
             'bg_bg' => get_string('bulgarian', 'block_ahotts_embhl'),
@@ -98,10 +110,15 @@ class block_ahotts_embhl_edit_form extends block_edit_form {
             'tr_tr' => get_string('turkish', 'block_ahotts_embhl'),
             'uk_ua' => get_string('ukrainian', 'block_ahotts_embhl'),
             'cy_cy' => get_string('welsh', 'block_ahotts_embhl'),
-            'ts_za' => get_string('xitsonga', 'block_ahotts_embhl')
+            'ts_za' => get_string('xitsonga', 'block_ahotts_embhl'),
+        ];
+        $languageselect = $mform->addElement(
+            'select',
+            'config_lang',
+            get_string('lang', 'block_ahotts_embhl'),
+            $languageoption
         );
-        $language_select = $mform->addElement('select', 'config_lang', get_string('lang', 'block_ahotts_embhl'), $language_option);
-        $language_select->setSelected(get_config('block_ahotts_embhl', 'lang'));
+        $languageselect->setSelected(get_config('block_ahotts_embhl', 'lang'));
         $mform->addHelpButton('config_lang', 'lang', 'block_ahotts_embhl');
 
         // For custom parameters.
@@ -111,26 +128,39 @@ class block_ahotts_embhl_edit_form extends block_edit_form {
         $mform->addHelpButton('config_customparams', 'customparams', 'block_ahotts_embhl');
 
         // For setting the &mode url parameter in the webReader script.
-        $mode_options = array(
+        $modeoptions = [
             'standard' => get_string('standard', 'block_ahotts_embhl'),
-            'restricted' => get_string('restricted', 'block_ahotts_embhl')
+            'restricted' => get_string('restricted', 'block_ahotts_embhl'),
+        ];
+        $modeselect = $mform->addElement(
+            'select',
+            'config_mode',
+            get_string('webreaderfeatures', 'block_ahotts_embhl'),
+            $modeoptions
         );
-        $mode_select = $mform->addElement('select', 'config_mode', get_string('webreaderfeatures', 'block_ahotts_embhl'), $mode_options);
-        $mode_select->setSelected(get_config('block_ahotts_embhl', 'mode'));
+        $modeselect->setSelected(get_config('block_ahotts_embhl', 'mode'));
         $mform->addHelpButton('config_mode', 'webreaderfeatures', 'block_ahotts_embhl');
     }
 
-    function validation($data, $files) {
+    /**
+     * Only letters, digits, '&' and '=' are accepted in the custom parameters.
+     *
+     * @param array $data
+     * @param array $files
+     * @return array Errors, keyed by field name.
+     */
+    public function validation($data, $files) {
         $errors = parent::validation($data, $files);
         if (isset($data['config_customparams'])) {
-            // Check with regular expression that it only contains valid characters
+            // Check with regular expression that it only contains valid characters.
             if (preg_match('/[^a-zA-Z0-9&=]/', $data['config_customparams'])) {
-                $errors['config_customparams'] = 'Invalid character included in custom parameter.';
+                $errors['config_customparams'] = get_string('customparams_invalidchar', 'block_ahotts_embhl');
             }
-            // Check PARAM_URL with temporary test URL
-            $temp_url = 'https://app-eu.readspeaker.com/cgi-bin/rsent?customerid=TEST&lang=TEST&readid=TEST&url=TEST' . $data['config_customparams'];
-            if (clean_param($temp_url, PARAM_URL) === '') {
-                $errors['config_customparams'] = 'Invalid custom parameter provided, did not pass PARAM_URL check.';
+            // Check PARAM_URL with temporary test URL.
+            $tempurl = 'https://app-eu.readspeaker.com/cgi-bin/rsent?customerid=TEST&lang=TEST&readid=TEST&url=TEST'
+                . $data['config_customparams'];
+            if (clean_param($tempurl, PARAM_URL) === '') {
+                $errors['config_customparams'] = get_string('customparams_invalidurl', 'block_ahotts_embhl');
             }
         }
         return $errors;

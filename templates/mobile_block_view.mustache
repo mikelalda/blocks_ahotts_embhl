@@ -24,6 +24,17 @@
 
     Adding the Listen button to Moodle mobile DOM.
 
+    Context variables required for this template:
+    * href - Link to the aHoTTS speech API for the current page.
+    * listen_text_title - Title of the Listen button.
+    * listen_text - Text of the Listen button.
+
+    Example context (json):
+    {
+        "href": "https://tts.example.org/eu?lang=eu_es&url=https%3A%2F%2Fmoodle.example.org%2Fcourse%2Fview.php%3Fid%3D2",
+        "listen_text_title": "Listen to this page using aHoTTS",
+        "listen_text": "Listen"
+    }
 }}
 
 {{=<% %>=}}

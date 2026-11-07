@@ -236,3 +236,62 @@ test('reads a cross-origin package that ships the bridge, and drives its highlig
     );
     assert.equal(posted.filter((m) => m.type === 'unhighlight').length >= 1, true);
 });
+
+/**
+ * Collect what the block sends to the server log.
+ *
+ * @param {Window} window
+ * @return {Object[]}
+ */
+const captureBeacons = (window) => {
+    const beacons = [];
+    window.navigator.sendBeacon = (url, body) => {
+        beacons.push(Object.fromEntries(body));
+        return true;
+    };
+    return beacons;
+};
+
+test('counts one reading in the usage report when reading starts', async () => {
+    const ctx = start('<p>Bat.</p><p>Bi.</p>', {
+        logurl: 'https://moodle.example.org/blocks/ahotts_embhl/clientlog.php',
+        sesskey: 'abc', cmid: 9, courseid: 3,
+    });
+    const beacons = captureBeacons(ctx.window);
+
+    ctx.link.click();
+    await tick(10);
+    ctx.synth.finish();
+    await tick(10);
+
+    assert.deepEqual(beacons.map((b) => [b.event, b.cmid, b.courseid]), [['listen', '9', '3']]);
+    assert.ok(beacons[0].lang, 'the reading language is sent');
+});
+
+test('does not count a reading when there is nothing to read', async () => {
+    const ctx = start('', {logurl: 'https://moodle.example.org/blocks/ahotts_embhl/clientlog.php'});
+    const beacons = captureBeacons(ctx.window);
+
+    ctx.link.click();
+    await tick(10);
+
+    assert.deepEqual(beacons, []);
+    assert.equal(ctx.status.textContent, STATUS.nocontent);
+});
+
+test('reads its configuration from the button when the block passes none', async () => {
+    const speech = loadSpeech(page('<p>Bat.</p>'));
+    const synth = stubSpeech(speech.window);
+    const config = {
+        prefer: 'webspeech', readid: 'region-main', maxlen: 3000, labels: LABELS,
+        webspeech: {lang: 'eu-ES'}, status: STATUS, bridge: {enabled: false, origins: [], timeout: 300},
+    };
+    speech.document.getElementById('readspeaker_button1').dataset.config = JSON.stringify(config);
+    speech.init();
+
+    speech.document.querySelector('a.rsbtn_play').click();
+    await tick(10);
+
+    assert.deepEqual(synth.spoken, ['Bat.']);
+});
+

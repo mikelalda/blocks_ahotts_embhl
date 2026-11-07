@@ -16,8 +16,6 @@
 
 namespace block_ahotts_embhl\local;
 
-defined('MOODLE_INTERNAL') || die();
-
 /**
  * The PDF of a SCORM activity, built once per package revision.
  *
@@ -31,7 +29,6 @@ defined('MOODLE_INTERNAL') || die();
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 class scorm_pdf_file {
-
     /** @var string File area of the generated PDFs. */
     const FILEAREA = 'scormpdf';
 
@@ -113,8 +110,14 @@ class scorm_pdf_file {
             $version = $hosted->version();
             if ($version === null) {
                 // Articulate cannot be asked right now: any PDF of this package will do.
-                $files = get_file_storage()->get_area_files($context->id, 'block_ahotts_embhl', self::FILEAREA,
-                    $revision, 'timecreated DESC', false);
+                $files = get_file_storage()->get_area_files(
+                    $context->id,
+                    'block_ahotts_embhl',
+                    self::FILEAREA,
+                    $revision,
+                    'timecreated DESC',
+                    false
+                );
                 if ($files) {
                     return reset($files);
                 }
@@ -154,8 +157,15 @@ class scorm_pdf_file {
      * @return \stored_file|null
      */
     private static function find(\context_module $context, int $revision, string $folder): ?\stored_file {
-        $files = get_file_storage()->get_directory_files($context->id, 'block_ahotts_embhl', self::FILEAREA,
-            $revision, $folder, false, false);
+        $files = get_file_storage()->get_directory_files(
+            $context->id,
+            'block_ahotts_embhl',
+            self::FILEAREA,
+            $revision,
+            $folder,
+            false,
+            false
+        );
         return $files ? reset($files) : null;
     }
 
@@ -168,8 +178,12 @@ class scorm_pdf_file {
      * @param string $filename
      * @return \stored_file|null
      */
-    private static function build(\context_module $context, int $revision, string $folder,
-            string $filename): ?\stored_file {
+    private static function build(
+        \context_module $context,
+        int $revision,
+        string $folder,
+        string $filename
+    ): ?\stored_file {
         \core_php_time_limit::raise(600);
         raise_memory_limit(MEMORY_HUGE);
 

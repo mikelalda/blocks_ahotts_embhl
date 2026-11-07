@@ -32,8 +32,8 @@ $addons = [
             'readspeaker' => [
                 'delegate' => 'CoreBlockDelegate',
                 'method' => 'mobile_block_view',
-                'init' => 'rs_init'
+                'init' => 'rs_init',
             ],
         ],
-    ]
+    ],
 ];

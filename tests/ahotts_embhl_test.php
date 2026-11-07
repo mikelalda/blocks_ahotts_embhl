@@ -14,15 +14,18 @@
 // You should have received a copy of the GNU General Public License
 // along with Moodle.  If not, see <http://www.gnu.org/licenses/>.
 
+namespace block_ahotts_embhl;
+
+#[\PHPUnit\Framework\Attributes\CoversClass(\block_ahotts_embhl\local\api::class)]
 /**
- * ReadSpeakers webReader for Moodle block.
+ * Tests for the links to the aHoTTS speech API.
  *
  * @package    block_ahotts_embhl
  * @copyright  2016 ReadSpeaker <info@readspeaker.com>
- * @author     Richard Risholm
  * @license    https://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
+ * @covers     \block_ahotts_embhl\local\api
  */
-class block_ahotts_embhl_testcase extends advanced_testcase {
+final class ahotts_embhl_test extends \advanced_testcase {
     public function test_build_href_routes_to_custom_api_by_language(): void {
         $this->resetAfterTest(true);
 
@@ -30,7 +33,13 @@ class block_ahotts_embhl_testcase extends advanced_testcase {
         set_config('apiurl_es', 'https://tts.example.local/es', 'block_ahotts_embhl');
         set_config('apiurl_en', 'https://tts.example.local/en', 'block_ahotts_embhl');
 
-        $eu = \block_ahotts_embhl\local\api::build_href('eu_es', 'https://example.com/page', 'region-main', '&foo=bar', 'page-title');
+        $eu = \block_ahotts_embhl\local\api::build_href(
+            'eu_es',
+            'https://example.com/page',
+            'region-main',
+            '&foo=bar',
+            'page-title'
+        );
         $es = \block_ahotts_embhl\local\api::build_href('es_es', 'https://example.com/page', 'region-main');
         $en = \block_ahotts_embhl\local\api::build_href('en_us', 'https://example.com/page', 'region-main');
 
