@@ -20,7 +20,7 @@ jobs:
           - 5432:5432
         options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 3
       mariadb:
-        image: mariadb:10
+        image: mariadb:11.4
         env:
           MYSQL_USER: 'root'
           MYSQL_ALLOW_EMPTY_PASSWORD: "true"
@@ -28,7 +28,7 @@ jobs:
           MYSQL_COLLATION_SERVER: "utf8mb4_unicode_ci"
         ports:
           - 3306:3306
-        options: --health-cmd="mysqladmin ping" --health-interval 10s --health-timeout 5s --health-retries 3
+        options: --health-cmd="mariadb-admin ping" --health-interval 10s --health-timeout 5s --health-retries 3
 
     strategy:
       fail-fast: false
@@ -46,22 +46,25 @@ jobs:
 
     steps:
       - name: Check out repository code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           path: plugin
 
       - name: Setup Node for the JavaScript unit tests
         if: ${{ matrix.moodle-branch == 'MOODLE_405_STABLE' && matrix.database == 'mariadb' }}
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: 22
 
+      # Removing node_modules afterwards keeps it out of the copy of the plugin that
+      # "moodle-plugin-ci install" puts into Moodle.
       - name: JavaScript unit tests
         if: ${{ matrix.moodle-branch == 'MOODLE_405_STABLE' && matrix.database == 'mariadb' }}
         working-directory: plugin/tests/js
         run: |
           npm ci
           npm test
+          rm -rf node_modules
 
       - name: Setup PHP ${{ matrix.php }}
         uses: shivammathur/setup-php@v2
