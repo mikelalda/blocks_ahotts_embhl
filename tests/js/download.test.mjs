@@ -45,6 +45,7 @@ const setup = (options = {}) => {
         prepare: async (text) => {
             prepared.push(text);
             if (options.fail && prepared.length === 2) { throw new Error('failed'); }
+            if (options.silent && options.silent(text)) { throw new Error('Nothing to synthesise'); }
             if (options.pending) { await options.pending; }
             return 'blob:fragment-' + prepared.length;
         },
@@ -378,4 +379,41 @@ test('does not count a PDF that could not be found', () => {
     const beacons = captureBeacons(ctx);
     ctx.pdfFileDownload.click();
     assert.deepEqual(beacons, []);
+});
+
+test('skips a fragment with nothing to say instead of losing the whole export', async () => {
+    const texturl = TEXT_URL;
+    const ctx = setup({texturl, silent: (text) => text === '---',
+        logurl: 'https://moodle.example.org/blocks/ahotts_embhl/clientlog.php'});
+    const beacons = captureBeacons(ctx);
+    const audioFetch = ctx.window.fetch;
+    ctx.window.fetch = async (url, options) => (url === texturl
+        ? {ok: true, json: async () => ({paragraphs: ['First.', '---', 'Second.']})}
+        : audioFetch(url, options));
+    ctx.download.click();
+    await tick(40);
+    assert.deepEqual(ctx.prepared, ['First.', '---', 'Second.']);
+    assert.equal(ctx.status.textContent, 'Ready');
+    assert.equal(ctx.save.hidden, false);
+    assert.deepEqual(beacons.map((b) => b.event), ['exportstart', 'exportdone']);
+    assert.match(beacons[1].detail, /fragments=3 .*skipped=1/);
+    const bytes = await bytesOf(ctx.window, ctx.urls.get(ctx.save.href));
+    // Two fragments of two samples with a single gap between them.
+    assert.equal(new DataView(bytes).getUint32(40, true), (2 + 150 + 2) * 2);
+});
+
+test('saves nothing when no fragment has anything to say', async () => {
+    const ctx = setup({silent: () => true,
+        logurl: 'https://moodle.example.org/blocks/ahotts_embhl/clientlog.php'});
+    const beacons = captureBeacons(ctx);
+    ctx.download.click();
+    await tick(30);
+    assert.deepEqual(ctx.prepared, ['First.', 'Second.']);
+    assert.equal(ctx.save.hidden, true);
+    assert.equal(ctx.urls.size, 0);
+    assert.deepEqual(ctx.clicks, []);
+    assert.deepEqual(beacons.map((b) => b.event), ['exportstart', 'exportempty']);
+    assert.match(beacons[1].detail, /skipped=2/);
+    assert.equal(ctx.download.disabled, false);
+    assert.equal(ctx.closed(), 1);
 });

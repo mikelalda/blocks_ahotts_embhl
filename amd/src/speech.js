@@ -1955,6 +1955,15 @@ export const init = (config) => {
         }
     };
 
+    /**
+     * Whether an engine refused a fragment only because it holds nothing to say
+     * (symbols, a separator, an emoji...). Such a fragment is skipped, not fatal.
+     *
+     * @param {*} error
+     * @return {Boolean}
+     */
+    const isNothingToSay = (error) => /Nothing to synthesise/.test(String((error && error.message) || error));
+
     const elapsed = (job) => Math.round((Date.now() - job.started) / 1000);
 
     /**
@@ -1994,6 +2003,8 @@ export const init = (config) => {
 
         job.context = exportAudioContext();
         await job.sink.open(job.context.sampleRate);
+        let written = 0;
+        let skipped = 0;
         for (let i = 0; i < job.total; i++) {
             job.current = i + 1;
             if (stopped) {
@@ -2001,16 +2012,34 @@ export const init = (config) => {
             }
             setStatus((messages.downloadprogress || '').replace('{current}', i + 1).replace('{total}', job.total));
             // Process one fragment at a time and release its URL promptly.
-            const samples = await exportFragment(engine, job.context, texts[i]);
+            let samples;
+            try {
+                samples = await exportFragment(engine, job.context, texts[i]);
+            } catch (error) {
+                // A fragment with nothing to pronounce must not lose the whole file;
+                // playback skips it too. Any other failure still aborts the export.
+                if (!isNothingToSay(error)) {
+                    throw error;
+                }
+                skipped++;
+                continue;
+            }
             if (samples === null) {
                 return;
             }
-            if (i > 0) {
+            if (written > 0) {
                 job.sink.write(new Int16Array(Math.round(job.context.sampleRate * FRAGMENT_GAP_SECONDS)));
             }
             job.sink.write(toPcm16(samples));
+            written++;
         }
         if (stopped) {
+            return;
+        }
+        if (!written) {
+            job.sink.abort();
+            report('exportempty', 'skipped=' + skipped);
+            setStatus(messages.nocontent);
             return;
         }
         const file = await job.sink.finish();
@@ -2021,7 +2050,7 @@ export const init = (config) => {
         setStatus([messages.downloadready, collected.blocked ? blockedNotice(collected) : '']
             .filter(Boolean).join(' '));
         report('exportdone', 'fragments=' + job.total + ' format=' + job.sink.format
-            + ' seconds=' + elapsed(job) + ' bytes=' + file.size, {lang: language.code});
+            + ' skipped=' + skipped + ' seconds=' + elapsed(job) + ' bytes=' + file.size, {lang: language.code});
         saveLink.click();
     };
 
