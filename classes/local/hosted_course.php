@@ -23,7 +23,9 @@ namespace block_ahotts_embhl\local;
  * packages.articulateusercontent.com. The browser gets it the way this class
  * does, server side, to build the PDF and the audio of the whole course:
  *
- *  1. indexAPI.html frames /content/<course id>/boot.html#token=<token>.
+ *  1. indexAPI.html frames /content/<course id>/boot.html#token=<token>, or, in
+ *     newer packages, loads /content/<course id>/dist/host.js with the token in
+ *     data-course-access-token, and host.js builds that same frame.
  *  2. GET /content/<id>/boot.html?bootEnabled=true describes the course,
  *     including the version Rise gives each publication of it.
  *  3. POST /content/<id>/content.html with courseAccessToken=<token> answers
@@ -115,11 +117,27 @@ class hosted_course {
      * @return string|null
      */
     public static function token(string $indexapi, string $id): ?string {
+        $html = html_entity_decode($indexapi, ENT_QUOTES | ENT_HTML5);
         $pattern = '~/content/' . preg_quote($id, '~') . '/boot\.html[^"\'\s<>#]*#(?:[^"\'\s<>]*&)?token=([^"\'\s<>&]+)~';
-        if (!preg_match($pattern, html_entity_decode($indexapi, ENT_QUOTES | ENT_HTML5), $match)) {
-            return null;
+        if (preg_match($pattern, $html, $match)) {
+            $token = rawurldecode($match[1]);
+        } else {
+            // A newer package: <script src=".../content/<id>/dist/host.js" data-course-access-token="...">.
+            $token = null;
+            preg_match_all('~<script\b[^>]*>~i', $html, $tags);
+            foreach ($tags[0] as $tag) {
+                if (
+                    strpos($tag, '/content/' . $id . '/dist/host.js') !== false
+                        && preg_match('~\sdata-course-access-token\s*=\s*(["\'])([^"\']+)\1~i', $tag, $match)
+                ) {
+                    $token = $match[2];
+                    break;
+                }
+            }
+            if ($token === null) {
+                return null;
+            }
         }
-        $token = rawurldecode($match[1]);
         return preg_match('~^[\x21-\x7e]{1,4096}$~', $token) ? $token : null;
     }
 

@@ -40,8 +40,35 @@ final class rise_proxy_test extends \advanced_testcase {
         . 'RaQm6PEpAoIDk6BS11waYao2WB7EqphB/boot.html#token=f1a6e2f6"></iframe>
     </div></body></html>';
 
+    /** @var string The indexAPI.html of a newer hosted package: host.js builds the course frame itself. */
+    const HOST_PACKAGE = '<!doctype html><html lang="eu"><head><meta charset="utf-8"><title>Ikastaroa</title></head>
+  <body>
+    <script crossorigin src="https://packages.articulateusercontent.com/content/CA5kEpMu7dj9jPJjul97lqv__Wh9vtDr/dist/host.js"'
+        . ' data-course-access-token="792c8aaa-c20b-4a53-b840-2435539f0243"'
+        . ' data-course-id="CA5kEpMu7dj9jPJjul97lqv__Wh9vtDr"></script>
+  </body></html>';
+
     /** @var string This site's origin in the tests. */
     const ORIGIN = 'https://moodle.example.local';
+
+    public function test_a_newer_hosted_package_is_recognised_rewritten_and_restored(): void {
+        $this->assertTrue(rise_proxy::is_connected(self::HOST_PACKAGE, self::ORIGIN));
+        $this->assertSame('CA5kEpMu7dj9jPJjul97lqv__Wh9vtDr', rise_proxy::course_id(self::HOST_PACKAGE, self::ORIGIN));
+
+        $rewritten = rise_proxy::rewrite(self::HOST_PACKAGE, self::ORIGIN);
+        $this->assertStringNotContainsString('articulateusercontent.com', $rewritten);
+        $this->assertStringContainsString(
+            'src="https://moodle.example.local/content/CA5kEpMu7dj9jPJjul97lqv__Wh9vtDr/dist/host.js"',
+            $rewritten,
+            'host.js is loaded from the site, so the frame it builds is too'
+        );
+        $this->assertTrue(rise_proxy::is_connected($rewritten, self::ORIGIN), 'a rewritten package is still recognised');
+        $this->assertSame('CA5kEpMu7dj9jPJjul97lqv__Wh9vtDr', rise_proxy::course_id($rewritten, self::ORIGIN));
+        $this->assertSame(self::HOST_PACKAGE, rise_proxy::restore($rewritten, self::ORIGIN));
+
+        $other = str_replace('packages.articulateusercontent.com', 'evil.example.com', self::HOST_PACKAGE);
+        $this->assertFalse(rise_proxy::is_connected($other, self::ORIGIN), 'only Articulate or this site');
+    }
 
     public function test_a_hosted_package_is_recognised_and_its_course_found(): void {
         $this->assertTrue(rise_proxy::is_connected(self::PACKAGE, self::ORIGIN));

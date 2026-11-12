@@ -98,6 +98,37 @@ final class hosted_course_test extends \advanced_testcase {
         ));
     }
 
+    /**
+     * The indexAPI.html of a newer connected package: only host.js, given the course and its token.
+     *
+     * @param string $host
+     * @return string
+     */
+    private function hostjs(string $host = 'https://packages.articulateusercontent.com'): string {
+        return '<!doctype html><html><body><script crossorigin src="' . $host . '/content/' . self::ID . '/dist/host.js"'
+            . ' data-course-access-token="eyJhbGciOi.J9-x_y=" data-course-id="' . self::ID . '"></script></body></html>';
+    }
+
+    public function test_a_newer_package_hands_its_token_to_host_js(): void {
+        foreach (['https://packages.articulateusercontent.com', 'https://moodle.example.local'] as $host) {
+            $course = hosted_course::from_package($this->hostjs($host), 'https://moodle.example.local');
+            $this->assertNotNull($course, $host);
+            $this->assertSame(self::ID, $course->course_id());
+        }
+        $this->assertSame('eyJhbGciOi.J9-x_y=', hosted_course::token($this->hostjs(), self::ID));
+        $this->assertNull(
+            hosted_course::token($this->hostjs(), 'AnotherCourseId0'),
+            'the token is only taken from the script of the course named'
+        );
+
+        $log = [];
+        $course = hosted_course::from_package($this->hostjs(), 'https://moodle.example.local', $this->articulate($log));
+        $document = scorm_pdf::from_hosted($course, make_request_directory())->document('fallback');
+        $this->assertSame('Curso conectado', $document['title']);
+        $html = implode("\n", array_column($document['sections'], 'html'));
+        $this->assertStringContainsString('Texto servido por Articulate.', $html);
+    }
+
     public function test_a_hosted_course_becomes_a_document_with_its_images(): void {
         $log = [];
         $course = hosted_course::from_package($this->indexapi(), 'https://moodle.example.local', $this->articulate($log));

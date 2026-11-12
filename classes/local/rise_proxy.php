@@ -101,7 +101,9 @@ class rise_proxy {
      */
     public static function course_id(string $html, string $origin): ?string {
         foreach ([self::UPSTREAM, $origin] as $host) {
-            $pattern = '~' . preg_quote($host, '~') . '/content/(' . self::ID_PATTERN . ')/boot\.html~';
+            // Older packages frame boot.html themselves; newer ones only load
+            // dist/host.js, which builds that frame from its own URL.
+            $pattern = '~' . preg_quote($host, '~') . '/content/(' . self::ID_PATTERN . ')/(?:boot\.html|dist/host\.js)~';
             if (preg_match($pattern, $html, $match)) {
                 return $match[1];
             }
@@ -151,7 +153,10 @@ class rise_proxy {
      * @return bool
      */
     public static function is_connected(string $html, string $origin): bool {
-        return strpos($html, 'REMOTE_PACKAGES_CDN_URL') !== false && self::course_id($html, $origin) !== null;
+        // Older packages name the host in __ENV__; newer ones hand host.js the
+        // course and its token as attributes, and host.js takes the host from its own URL.
+        return (strpos($html, 'REMOTE_PACKAGES_CDN_URL') !== false || strpos($html, 'data-course-access-token') !== false)
+            && self::course_id($html, $origin) !== null;
     }
 
     /**
